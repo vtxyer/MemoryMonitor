@@ -332,6 +332,13 @@ struct domain
     nodemask_t node_affinity;
     unsigned int last_alloc_node;
     spinlock_t node_affinity_lock;
+
+	/*<VT> add*/
+	spinlock_t recent_cr3_lock
+	int sample_flag;
+	unsigned long recent_cr3_size;
+	unsigned long *recent_cr3;
+
 };
 
 struct domain_setup_info

@@ -246,6 +246,13 @@ struct domain *domain_create(
     spin_lock_init(&d->shutdown_lock);
     d->shutdown_code = -1;
 
+	/*<VT> add*/
+    spin_lock_init(&d->recent_cr3_lock);
+	d->recent_cr3 = NULL;
+	d->recent_cr3_size = 0;
+	d->sample_flag = 0;
+
+
     if ( domcr_flags & DOMCRF_hvm )
         d->is_hvm = 1;
 

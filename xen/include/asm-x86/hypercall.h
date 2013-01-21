@@ -105,6 +105,11 @@ extern int
 do_kexec(
     unsigned long op, unsigned arg1, XEN_GUEST_HANDLE(void) uarg);
 
+extern int
+do_vt_op(
+	unsigned long op, int domID, unsigned long arg, void *buf1, void *buf2);
+
+
 #ifdef __x86_64__
 
 extern long
