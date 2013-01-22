@@ -1,6 +1,6 @@
-rbtree.o: rbtree.c /XenSource/MemoryMonitor/xen/include/xen/config.h \
- /XenSource/MemoryMonitor/xen/include/xen/compiler.h \
- /XenSource/MemoryMonitor/xen/include/asm/config.h \
- /XenSource/MemoryMonitor/xen/include/xen/types.h \
- /XenSource/MemoryMonitor/xen/include/asm/types.h \
- /XenSource/MemoryMonitor/xen/include/xen/rbtree.h
+rbtree.o: rbtree.c /home/Xen/MemoryMonitor/xen/include/xen/config.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/compiler.h \
+ /home/Xen/MemoryMonitor/xen/include/asm/config.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/types.h \
+ /home/Xen/MemoryMonitor/xen/include/asm/types.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/rbtree.h

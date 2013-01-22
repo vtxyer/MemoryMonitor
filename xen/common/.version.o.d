@@ -1,2 +1,2 @@
-version.o: version.c /XenSource/MemoryMonitor/xen/include/xen/compile.h \
- /XenSource/MemoryMonitor/xen/include/xen/version.h
+version.o: version.c /home/Xen/MemoryMonitor/xen/include/xen/compile.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/version.h
