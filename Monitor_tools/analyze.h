@@ -141,6 +141,19 @@ int pte_entry_valid(unsigned long entry)
 }
 
 extern "C"{
+int init_hypercall(int recent_cr3_size, int fd){
+	int ret, i;
+
+	//Init
+	privcmd_hypercall_t hyper1 = { 
+		__HYPERVISOR_vt_op, 
+		{ 1, domID, recent_cr3_size, 0, 0}
+	};
+	ret = ioctl(fd, IOCTL_PRIVCMD_HYPERCALL, &hyper1);
+
+	return ret;
+}
+
 void get_cr3_hypercall(unsigned long *cr3_list, int &list_size, int fd){
 	int ret, i;
 
@@ -149,10 +162,11 @@ void get_cr3_hypercall(unsigned long *cr3_list, int &list_size, int fd){
 
 	//Get cr3 from Hypervisor
 	privcmd_hypercall_t hyper1 = { 
-		__HYPERVISOR_change_ept_content, 
-		{ domID, 0, 0, 16, (__u64)cr3_list}
+		__HYPERVISOR_vt_op, 
+		{ 3, domID, 0, (__u64)cr3_list, 0}
 	};
 	ret = ioctl(fd, IOCTL_PRIVCMD_HYPERCALL, &hyper1);
+
 	list_size = cr3_list[0];
 	for(i=1; i<=list_size; i++){
 		cr3_list[i-1] = cr3_list[i];
@@ -308,7 +322,7 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 }
 
 
-unsigned long page_walk_ia32e(addr_t dtb, int os_type, struct hash_table *table, struct guest_pagetable_walk &gw)
+unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest_pagetable_walk &gw)
 {
 	unsigned long count=0, total=0;	
 	unsigned long *l1p, *l2p, *l3p, *l4p;
@@ -484,7 +498,7 @@ BUSERR:
 }
 
 
-int walk_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size, int os_type, unsigned int round, struct guest_pagetable_walk &gw)
+int walk_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size,  unsigned int round, struct guest_pagetable_walk &gw)
 {
 	unsigned long cr3;
 	for(int i=0; i<list_size; i++)
@@ -497,7 +511,7 @@ int walk_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size, int os_
 		h.round = round;
 		if(cr3 == 0x187000)
 			continue;
-		page_walk_ia32e(cr3, os_type, &h, gw);
+		page_walk_ia32e(cr3, &h, gw);
 	}
 }
 int retrieve_list(DATAMAP &list, unsigned int round)
@@ -528,7 +542,7 @@ int retrieve_list(DATAMAP &list, unsigned int round)
 
 	return retrieve_cr3_number;
 }
-unsigned long calculate_all_page(DATAMAP &list, int os_type, unsigned long *result)
+unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 {
 	DATAMAP::iterator it = list.begin();
 	unsigned long check_cr3_num = 0;

@@ -32,7 +32,6 @@
 #include <xen/keyhandler.h>
 #include <xen/softirq.h>
 #include <xen/mm.h>
-#include <xen/hashtab.h>
 
 
 #define atomic_read_ept_entry(__pepte)                              \
@@ -111,12 +110,6 @@ static void ept_p2m_type_to_flags(ept_entry_t *entry, p2m_type_t type, p2m_acces
             entry->r = 1;
             entry->w = entry->x = 0;
             break;
-        /*<VT> add*/            
-        case p2m_ram_monitor:
-            entry->r = 0;
-            entry->w = 0;
-            entry->x = 0;
-            break;            
     }
 
 
@@ -923,7 +916,9 @@ unsigned long do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf
     struct p2m_domain *p2m;
     struct vcpu *v = NULL;
     int i;
-
+	unsigned long *longBuff;
+	
+	longBuff = (unsigned long *)buf1;
 
 	p2m = p2m_get_hostp2m(d);
 
@@ -937,6 +932,10 @@ unsigned long do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf
     switch(op){
         case 1:
 			/*Init monitor environment*/
+			if(d->recent_cr3_size != 0){
+				printk("<VT> already start sampling\n");
+				return 1;
+			}
 			d->recent_cr3_size = arg;
 			d->recent_cr3 = xmalloc_array(unsigned long, arg);
 			if(d->recent_cr3 == NULL){
@@ -946,18 +945,29 @@ unsigned long do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf
 			d->sample_flag = 1;
 			break;
 		case 2:
+			/*stop sampling*/
+            spin_lock(&(d->recent_cr3_lock));
+			d->sample_flag = 0;
+			d->recent_cr3_size = 0;
+			if(d->recent_cr3 != NULL)
+				xfree(d->recent_cr3);
+			d->recent_cr3 = NULL;
+            spin_unlock(&(d->recent_cr3_lock));
+			break;
+		case 3:
             /*return cr3 back to Dom0*/
             longBuff[0] = 0;
             spin_lock(&(d->recent_cr3_lock));
-            for(i=0; i<RECENT_CR3_SIZE; i++){
-                if(d->recent_cr3[i].cr3 != 0){
+            for(i=0; i<d->recent_cr3_size; i++){
+                if(d->recent_cr3[i] != 0){
                     longBuff[0]++;
-                    longBuff[longBuff[0]] = d->recent_cr3[i].cr3;
-                    d->recent_cr3[i].cr3 = 0;
+                    longBuff[longBuff[0]] = d->recent_cr3[i];
+                    d->recent_cr3[i] = 0;
                 }
             }
             spin_unlock(&(d->recent_cr3_lock));
             break;
-
+	
+	}
     return 0;
 }

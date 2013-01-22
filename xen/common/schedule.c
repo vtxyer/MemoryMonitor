@@ -1121,6 +1121,7 @@ static void schedule(void)
 	/*<VT> add*/
 	unsigned long tmp_cr3;
 	unsigned long recent_cr3_size;
+//	int i;
 
     ASSERT(!in_atomic());
 
@@ -1131,7 +1132,7 @@ static void schedule(void)
 	/*<VT> add*/
 	recent_cr3_size = next->domain->recent_cr3_size;
     tmp_cr3 = next->arch.hvm_vcpu.guest_cr[3];
-    if( next->domain->sample_flag > 0 ){ 
+/*    if( (next->domain->sample_flag) == 1 ){ 
         spin_lock(&(next->domain->recent_cr3_lock));
         for(i=0; i<recent_cr3_size; i++){
             if(tmp_cr3 == next->domain->recent_cr3[i]){  //cr3 already in list                
@@ -1145,7 +1146,7 @@ static void schedule(void)
             next->domain->recent_cr3[0] = tmp_cr3;
         }    
         spin_unlock(&(next->domain->recent_cr3_lock));
-    }
+    }*/
 
 
 

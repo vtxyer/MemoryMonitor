@@ -27,11 +27,11 @@ int main(int argc, char *argv[])
 	signal(SIGBUS, handler);
 
 	if(argc<3){
-		printf("%s domID os_type(linux->0 windows->1)\n", argv[0]);
+		printf("%s domID recent_cr3_size\n", argv[0]);
 		exit(1);
 	}
 	domID = atoi(argv[1]);
-	os_type = atoi(argv[2]);
+	recent_cr3_size = atoi(argv[2]);
 
 	xch1 =  xc_interface_open(0,0,0);
 	xch2 =  xc_interface_open(0,0,0);
@@ -47,10 +47,11 @@ int main(int argc, char *argv[])
 		exit(1);  
 	}
 
-//	cr3 = (addr_t)strtoul(argv[1], NULL, 16);
-//	fscanf(stdin, "%lx %lx %lx %lx %lx %lx", &cr3_list[0], &cr3_list[1], &cr3_list[2], &cr3_list[3], &cr3_list[4], &cr3_list[5]);
-//	fscanf(stdin, "%lx %lx", &cr3_list[0], &cr3_list[1]);
-//	list_size = 1;
+	ret = init_hypercall(recent_cr3_size, fd);
+	if(ret == -1){
+		printf("Init environment error\n");
+		return -1;
+	}
 
 
 	while(1){
@@ -63,9 +64,9 @@ int main(int argc, char *argv[])
 		system_map_total_valid.clear();
 		total_change_page = each_change_page = result[0] = result[1] = result[2] = 0;;
 
-		walk_cr3_list(data_map, cr3_list, list_size, os_type, round, gw);
+		walk_cr3_list(data_map, cr3_list, list_size, round, gw);
 		each_change_page = check_cr3_list(data_map, cr3_list, list_size);
-		calculate_all_page(data_map, os_type, result);
+		calculate_all_page(data_map, result);
 
 		printf("Invalid Memory:%lu[M] Valid Memory:%lu[M] Total valid Memory:%lu[M] map size:%lu[M] round %d\n\n", 
 					result[0]/256, result[1]/256, result[2]/256, data_map[cr3_list[0]].h.size()/(1024*1024), round);

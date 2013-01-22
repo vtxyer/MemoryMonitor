@@ -247,7 +247,7 @@ struct domain *domain_create(
     d->shutdown_code = -1;
 
 	/*<VT> add*/
-    spin_lock_init(&d->recent_cr3_lock);
+    spin_lock_init(&(d->recent_cr3_lock));
 	d->recent_cr3 = NULL;
 	d->recent_cr3_size = 0;
 	d->sample_flag = 0;
