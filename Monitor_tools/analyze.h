@@ -18,15 +18,10 @@ extern "C"{
 #include <map>
 using namespace std;
 
-#define PAGE_ACCESSED (1<<5)
-#define PAGE_PRESENT  (1)
-#define PAGE_PROTNONE  (1<<8)
-#define PAGE_FILE  (1<<6)
-
 #define CHANGE_LIMIT 2
 #define MAX_ROUND_INTERVAL 20
 #define ADDR_MASK 0x0000ffffffffffff
-
+#define RECENT_CR3_SIZE 30
 
 typedef unsigned long addr_t;
 typedef unsigned long mfn_t;
@@ -296,21 +291,21 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 		}
 
 		if((get_change_number(val_ref)>=CHANGE_LIMIT)){
-			if(valid_bit==0)
+/*			if(valid_bit==0)
 				(table->activity_page)[0]++;
 			else
-				(table->activity_page)[1]++;
+				(table->activity_page)[1]++;*/
 
 			/*check if paddr already stored in system_map*/
-			/*if(system_map->count(paddr) > 0){
-			  byte *paddr_times = &(system_map->at(paddr));
-			  if((*paddr_times) < 0xff)
-			 *paddr_times += 1;
-			 (table->activity_page)[valid_bit]++;
+			if(system_map->count(paddr) > 0){
+				byte *paddr_times = &(system_map->at(paddr));
+			  	if((*paddr_times) < 0xff)
+					*paddr_times += 1;
+			 	(table->activity_page)[valid_bit]++;
 			 }
 			 else{
-			 system_map->insert(pair<unsigned long, byte>(paddr, 1));
-			 }*/
+			 	system_map->insert(pair<unsigned long, byte>(paddr, 1));
+			 }
 		}
 
 		if(val!=valid_bit){
@@ -490,9 +485,9 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 BUSERR: 
 
 
-	if(table->non2s != 0)
+/*	if(table->non2s != 0)
 		printf("###All_pages:%lu count:%lu[M] non2s:%lu s2non:%lu access:%lu hugepage_counter:%u cr3:%lx###\n", 
-				total, count/256, table->non2s, table->s2non, access, hugepage_counter, dtb);
+				total, count/256, table->non2s, table->s2non, access, hugepage_counter, dtb);*/
 	table->count = count;
 	return count;
 }

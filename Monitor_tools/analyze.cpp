@@ -26,12 +26,11 @@ int main(int argc, char *argv[])
 
 	signal(SIGBUS, handler);
 
-	if(argc<3){
-		printf("%s domID recent_cr3_size\n", argv[0]);
+	if(argc<2){
+		printf("%s domID\n", argv[0]);
 		exit(1);
 	}
 	domID = atoi(argv[1]);
-	recent_cr3_size = atoi(argv[2]);
 
 	xch1 =  xc_interface_open(0,0,0);
 	xch2 =  xc_interface_open(0,0,0);
@@ -47,7 +46,7 @@ int main(int argc, char *argv[])
 		exit(1);  
 	}
 
-	ret = init_hypercall(recent_cr3_size, fd);
+	ret = init_hypercall(RECENT_CR3_SIZE, fd);
 	if(ret == -1){
 		printf("Init environment error\n");
 		return -1;
