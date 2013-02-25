@@ -32,9 +32,15 @@ typedef map<unsigned long, byte> SYSTEM_MAP;
 
 sigjmp_buf sigbuf;
 
+struct mapData
+{
+	byte present_times;
+	unsigned long paddr;
+};
+typedef struct mapData mapData;
 struct hash_table
 {
-	map<unsigned long, byte> h; //bit 0=>valid_bit, 1~8 => counter
+	map<unsigned long, manData> h; //bit 0=>valid_bit, 1~8 => counter
 	unsigned long cr3;
 	unsigned long non2s, s2non, count;
 	unsigned long change_page, total_valid_pages;
@@ -245,7 +251,7 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 	char val, tmp;
 	unsigned long entry_size = 8;
 	int ret = 0;
-	map<unsigned long, char>::iterator it;
+	map<unsigned long, mapData>::iterator it;
 	SYSTEM_MAP *system_map;
 
 	vkey = gw->va;
@@ -264,6 +270,7 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 	/*insert into each process map*/
 	it = table->h.find(vkey);
 	if(it == table->h.end()){
+		struct *mapVal = new mapData;
 		table->h.insert(map<unsigned long, char>::value_type(vkey, valid_bit));
 		ret = 0;
 	}
@@ -338,9 +345,6 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 	//	l4num = 511;
 	//	l4num = 1;
 	memset(&gw, 0, sizeof(struct guest_pagetable_walk));	
-
-
-
 
 
 	if(!sigsetjmp(sigbuf, 1)){

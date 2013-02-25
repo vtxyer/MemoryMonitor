@@ -914,7 +914,6 @@ unsigned long do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf
 {
     struct domain* d = get_domain_by_id(domID);
     struct p2m_domain *p2m;
-    struct vcpu *v = NULL;
     int i;
 	unsigned long *longBuff;
 	
@@ -924,10 +923,6 @@ unsigned long do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf
 
     if(d==NULL)
         return -1;
-    if(v==NULL){
-        printk("<VT> vcpu error\n");
-        return -1;
-    }
 
     switch(op){
         case 1:
