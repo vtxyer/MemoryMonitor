@@ -12,14 +12,13 @@ extern "C"{
 #include <string.h>
 #include <sys/mman.h>
 #include <xs.h>
-//#include <xen/hvm/save.h>
 #include <setjmp.h>
 }
 #include <map>
 using namespace std;
 
-#define CHANGE_LIMIT 2
-#define MAX_ROUND_INTERVAL 20
+#define CHANGE_LIMIT 1
+#define MAX_ROUND_INTERVAL 999
 #define ADDR_MASK 0x0000ffffffffffff
 #define RECENT_CR3_SIZE 30
 
@@ -65,7 +64,7 @@ struct guest_pagetable_walk
 int domID;
 SYSTEM_MAP system_map_wks;
 SYSTEM_MAP system_map_swap;
-SYSTEM_MAP system_map_total_valid;
+//SYSTEM_MAP system_map_total_valid;
 xc_interface *xch4, *xch3, *xch2, *xch1;
 
 //1~7 bits represent change number
@@ -176,12 +175,13 @@ void get_cr3_hypercall(unsigned long *cr3_list, int &list_size, int fd){
 	cr3_list[i+1] = 0;
 }
 }
-void total_valid_calculate(unsigned long frame, unsigned long &total_value){
+
+/*void total_valid_calculate(unsigned long frame, unsigned long &total_value){
 	if(system_map_total_valid.count(frame) == 0){
 		system_map_total_valid[frame] = 1;
 		total_value++;
 	}
-}
+}*/
 
 void* map_page(unsigned long pa_base, int level, struct guest_pagetable_walk *gw)
 {	
@@ -439,7 +439,7 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 						else
 						{
 							int ret;
-       						total_valid_calculate( (((gw.l1e)>>12)&ADDR_MASK ), table->total_valid_pages);
+//       						total_valid_calculate( (((gw.l1e)>>12)&ADDR_MASK ), table->total_valid_pages);
 //                            (table->total_valid_pages)++;  						
 							ret = compare_swap(table, &gw, l1offset, 1);
 						}
@@ -542,6 +542,7 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 				char valid_bit = hashIt->second.present_times & 1;
 				char val_ref = hashIt->second.present_times;
 				unsigned long paddr = hashIt->second.paddr;
+
 				if(valid_bit == 0){
 					system_map = &system_map_swap;
 				}
@@ -566,6 +567,8 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 						system_map->insert(pair<unsigned long, byte>(paddr, 1));
 					 }
 				}
+
+				hashIt++;
 			}
 
 			result[0] += h.activity_page[0];

@@ -60,18 +60,24 @@ int main(int argc, char *argv[])
 
 		system_map_wks.clear();
 		system_map_swap.clear();
-		system_map_total_valid.clear();
+	//	system_map_total_valid.clear();
 		total_change_page = each_change_page = result[0] = result[1] = result[2] = 0;;
 
+
 		each_change_page = check_cr3_list(data_map, cr3_list, list_size);
+		cout<<"check cr3 done\n";
+
 		calculate_all_page(data_map, result);
+		cout<<"calculate_all_page done\n";
+
 		walk_cr3_list(data_map, cr3_list, list_size, round, gw);
+		cout<<"walk_cr3_list done\n";
 
 		printf("Invalid Memory:%lu[M] Valid Memory:%lu[M] Total valid Memory:%lu[M] map size:%lu[M] round %d\n\n", 
 					result[0]/256, result[1]/256, result[2]/256, data_map[cr3_list[0]].h.size()/(1024*1024), round);
 		round++;
 		retrieve_list(data_map, round);
-		sleep(2);		
+		sleep(1);		
 	}
 
 	xc_interface_close(xch1);
