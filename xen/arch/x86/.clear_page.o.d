@@ -1,5 +1,5 @@
 clear_page.o: clear_page.S \
- /home/Xen/MemoryMonitor/xen/include/xen/config.h \
- /home/Xen/MemoryMonitor/xen/include/asm/config.h \
- /home/Xen/MemoryMonitor/xen/include/asm/page.h \
- /home/Xen/MemoryMonitor/xen/include/asm/x86_64/page.h
+ /XenSource/MemoryMonitor/xen/include/xen/config.h \
+ /XenSource/MemoryMonitor/xen/include/asm/config.h \
+ /XenSource/MemoryMonitor/xen/include/asm/page.h \
+ /XenSource/MemoryMonitor/xen/include/asm/x86_64/page.h

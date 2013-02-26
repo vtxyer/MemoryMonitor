@@ -1,9 +1,9 @@
-#define XEN_COMPILE_DATE	"Fri Jan 25 21:17:53 CST 2013"
-#define XEN_COMPILE_TIME	"21:17:53"
+#define XEN_COMPILE_DATE	"Wed Feb 27 01:51:48 CST 2013"
+#define XEN_COMPILE_TIME	"01:51:48"
 #define XEN_COMPILE_BY		"root"
-#define XEN_COMPILE_DOMAIN	""
-#define XEN_COMPILE_HOST	"VTWorkStation"
-#define XEN_COMPILER		"gcc version 4.7.2 20120921 (Red Hat 4.7.2-2) (GCC) "
+#define XEN_COMPILE_DOMAIN	"(none)"
+#define XEN_COMPILE_HOST	"ASUS_SERVER"
+#define XEN_COMPILER		"gcc version 4.4.6 20120305 (Red Hat 4.4.6-4) (GCC) "
 
 #define XEN_VERSION		4
 #define XEN_SUBVERSION		1
