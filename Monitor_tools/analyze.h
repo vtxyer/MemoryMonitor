@@ -26,7 +26,6 @@ using namespace std;
 typedef unsigned long addr_t;
 typedef unsigned long mfn_t;
 typedef char byte;
-typedef map<unsigned long, byte> HASHMAP;
 typedef map<unsigned long, struct hash_table> DATAMAP;
 typedef map<unsigned long, byte> SYSTEM_MAP;
 
@@ -38,9 +37,11 @@ struct mapData
 	unsigned long paddr;
 };
 typedef struct mapData mapData;
+typedef map<unsigned long, mapData> HASHMAP;
+
 struct hash_table
 {
-	map<unsigned long, manData> h; //bit 0=>valid_bit, 1~8 => counter
+	map<unsigned long, mapData> h; //bit 0=>valid_bit, 1~8 => counter
 	unsigned long cr3;
 	unsigned long non2s, s2non, count;
 	unsigned long change_page, total_valid_pages;
@@ -252,30 +253,29 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 	unsigned long entry_size = 8;
 	int ret = 0;
 	map<unsigned long, mapData>::iterator it;
-	SYSTEM_MAP *system_map;
+
 
 	vkey = gw->va;
 	/*!!!!!! NOTE !!!!!!!
 	 * I assume bit 13~48 also represent swap file offset
 	 * */
 	paddr = ((gw->l1e) & ADDR_MASK)>>12;
-	if(valid_bit == 0){
-		system_map = &system_map_swap;
-	}
-	else{
-		system_map = &system_map_wks;
-	}
+
 
 
 	/*insert into each process map*/
 	it = table->h.find(vkey);
 	if(it == table->h.end()){
-		struct *mapVal = new mapData;
-		table->h.insert(map<unsigned long, char>::value_type(vkey, valid_bit));
+		mapData mapVal;
+		mapVal.present_times = valid_bit;
+		mapVal.paddr = paddr;
+		table->h.insert(map<unsigned long, mapData>::value_type(vkey, mapVal));
 		ret = 0;
 	}
-	else{	
-		char &val_ref = table->h[vkey];	
+	else{
+		char &val_ref = table->h[vkey].present_times;	
+		table->h[vkey].paddr = paddr;
+
 		val = val_ref&1;
 		//non-swap to swap bit
 		if( val==1 && valid_bit==0 ){	
@@ -297,23 +297,6 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 			ret = 0;		
 		}
 
-		if((get_change_number(val_ref)>=CHANGE_LIMIT)){
-/*			if(valid_bit==0)
-				(table->activity_page)[0]++;
-			else
-				(table->activity_page)[1]++;*/
-
-			/*check if paddr already stored in system_map*/
-			if(system_map->count(paddr) > 0){
-				byte *paddr_times = &(system_map->at(paddr));
-			  	if((*paddr_times) < 0xff)
-					*paddr_times += 1;
-			 	(table->activity_page)[valid_bit]++;
-			 }
-			 else{
-			 	system_map->insert(pair<unsigned long, byte>(paddr, 1));
-			 }
-		}
 
 		if(val!=valid_bit){
 			val_ref &= 0xfe;
@@ -545,13 +528,46 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 {
 	DATAMAP::iterator it = list.begin();
 	unsigned long check_cr3_num = 0;
+	SYSTEM_MAP *system_map;
 
 	while(it != list.end())
 	{
-		check_cr3_num++;
 		struct hash_table &h = it->second;
 		unsigned long cr3 = it->first;
+		check_cr3_num++;
+
 		if(h.check == 1){
+			HASHMAP::iterator hashIt = h.h.begin();
+			while(hashIt != h.h.end()){
+				char valid_bit = hashIt->second.present_times & 1;
+				char val_ref = hashIt->second.present_times;
+				unsigned long paddr = hashIt->second.paddr;
+				if(valid_bit == 0){
+					system_map = &system_map_swap;
+				}
+				else{
+					system_map = &system_map_wks;
+				}
+
+				if(  (get_change_number(val_ref) >= CHANGE_LIMIT && valid_bit == 0) | valid_bit == 1 ){
+		/*			if(valid_bit==0)
+						(table->activity_page)[0]++;
+					else
+						(table->activity_page)[1]++;*/
+
+					/*check if paddr already stored in system_map*/
+					if(system_map->count(paddr) > 0){
+						byte *paddr_times = &(system_map->at(paddr));
+						if((*paddr_times) < 0xff)
+							*paddr_times += 1;
+						(h.activity_page)[valid_bit]++;
+					 }
+					 else{
+						system_map->insert(pair<unsigned long, byte>(paddr, 1));
+					 }
+				}
+			}
+
 			result[0] += h.activity_page[0];
 			result[1] += h.activity_page[1];
 			result[2] += h.total_valid_pages;
