@@ -262,7 +262,6 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 	paddr = ((gw->l1e) & ADDR_MASK)>>12;
 
 
-
 	/*insert into each process map*/
 	it = table->h.find(vkey);
 	if(it == table->h.end()){
@@ -440,7 +439,7 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 						{
 							int ret;
 //       						total_valid_calculate( (((gw.l1e)>>12)&ADDR_MASK ), table->total_valid_pages);
-//                            (table->total_valid_pages)++;  						
+                            (table->total_valid_pages)++;  						
 							ret = compare_swap(table, &gw, l1offset, 1);
 						}
 					}	 
@@ -539,8 +538,8 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 		if(h.check == 1){
 			HASHMAP::iterator hashIt = h.h.begin();
 			while(hashIt != h.h.end()){
-				char valid_bit = hashIt->second.present_times & 1;
-				char val_ref = hashIt->second.present_times;
+				byte valid_bit = (hashIt->second.present_times) & 1;
+				byte val_ref = hashIt->second.present_times;
 				unsigned long paddr = hashIt->second.paddr;
 
 				if(valid_bit == 0){
@@ -550,22 +549,18 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 					system_map = &system_map_wks;
 				}
 
-				if(  (get_change_number(val_ref) >= CHANGE_LIMIT && valid_bit == 0) | valid_bit == 1 ){
-		/*			if(valid_bit==0)
-						(table->activity_page)[0]++;
-					else
-						(table->activity_page)[1]++;*/
-
+				if(  (get_change_number(val_ref) >= CHANGE_LIMIT && valid_bit == 0) || valid_bit == 1 ){
 					/*check if paddr already stored in system_map*/
 					if(system_map->count(paddr) > 0){
 						byte *paddr_times = &(system_map->at(paddr));
 						if((*paddr_times) < 0xff)
 							*paddr_times += 1;
-						(h.activity_page)[valid_bit]++;
 					 }
 					 else{
 						system_map->insert(pair<unsigned long, byte>(paddr, 1));
+						(h.activity_page)[valid_bit]++;
 					 }
+
 				}
 
 				hashIt++;
@@ -575,6 +570,8 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 			result[1] += h.activity_page[1];
 			result[2] += h.total_valid_pages;
 		}
+
+		h.check = 0;
 		it++;
 	}
 

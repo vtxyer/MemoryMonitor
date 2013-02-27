@@ -65,19 +65,17 @@ int main(int argc, char *argv[])
 
 
 		each_change_page = check_cr3_list(data_map, cr3_list, list_size);
-		cout<<"check cr3 done\n";
 
 		calculate_all_page(data_map, result);
-		cout<<"calculate_all_page done\n";
-
-		walk_cr3_list(data_map, cr3_list, list_size, round, gw);
-		cout<<"walk_cr3_list done\n";
 
 		printf("Invalid Memory:%lu[M] Valid Memory:%lu[M] Total valid Memory:%lu[M] map size:%lu[M] round %d\n\n", 
 					result[0]/256, result[1]/256, result[2]/256, data_map[cr3_list[0]].h.size()/(1024*1024), round);
+
+		walk_cr3_list(data_map, cr3_list, list_size, round, gw);
+
 		round++;
 		retrieve_list(data_map, round);
-		sleep(1);		
+		sleep(2);		
 	}
 
 	xc_interface_close(xch1);
