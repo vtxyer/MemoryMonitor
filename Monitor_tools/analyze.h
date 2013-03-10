@@ -89,15 +89,16 @@ byte get_change_number(byte value)
 int get_bit(unsigned long entry, int num, int position)
 {
 	unsigned long mask = 0;
-	int i, value;
+	unsigned long i, value;
 	for(i=0; i<num; i++){
-		mask<<=1;
+		mask<<=(unsigned long)1;
 		mask+=1;
 	}
-	value = (entry&(mask<<position));
-	value >>=position;
+	value = (entry&(mask<<(unsigned long)position));
+	value >>= (unsigned long)position;
 	return value;
 }
+
 int page_size_flag (uint64_t entry){
 	return get_bit(entry, 1, 7);
 }
@@ -107,6 +108,15 @@ int entry_present(uint64_t entry){
 int get_access_bit(uint64_t entry){
 	return get_bit(entry, 1, 5);
 }
+int get_huge_bit(uint64_t entry)
+{
+	return get_bit(entry, 1, 0);
+}
+unsigned long get_paddr(uint64_t addr)
+{
+	return get_bit(addr, 52, 12);
+}
+
 unsigned long get_vaddr(unsigned long l1offset, unsigned long l2offset, unsigned long l3offset, unsigned long l4offset)
 {
 	unsigned long va = 0, tmp;
@@ -186,6 +196,7 @@ void get_cr3_hypercall(unsigned long *cr3_list, int &list_size, int fd){
 void* map_page(unsigned long pa_base, int level, struct guest_pagetable_walk *gw)
 {	
 	pa_base >>= 12;
+	pa_base &= ADDR_MASK;
 	switch(level){
 		case 1:
 			gw->l1mfn = pa_base;
@@ -246,7 +257,7 @@ unsigned long check_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_si
  * valid_bit=0 => in swap
  * valid_bit=1 => is valid
  * */
-int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsigned long offset, char valid_bit)
+int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsigned long offset, char valid_bit, char huge_bit)
 {
 	unsigned long vkey, paddr;
 	char val, tmp;
@@ -259,7 +270,10 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 	/*!!!!!! NOTE !!!!!!!
 	 * I assume bit 13~48 also represent swap file offset
 	 * */
-	paddr = ((gw->l1e) & ADDR_MASK)>>12;
+	if(huge_bit == 0)
+		paddr = ((gw->l1e) & ADDR_MASK)>>12;
+	else
+		paddr = ((gw->l2e) & ADDR_MASK)>>12;
 
 
 	/*insert into each process map*/
@@ -267,13 +281,16 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 	if(it == table->h.end()){
 		mapData mapVal;
 		mapVal.present_times = valid_bit;
-		mapVal.paddr = paddr;
+		mapVal.paddr = (paddr<<12);
+		mapVal.paddr |= huge_bit;
+
 		table->h.insert(map<unsigned long, mapData>::value_type(vkey, mapVal));
 		ret = 0;
 	}
 	else{
 		char &val_ref = table->h[vkey].present_times;	
-		table->h[vkey].paddr = paddr;
+		table->h[vkey].paddr = (paddr<<12);
+		table->h[vkey].paddr |= huge_bit;
 
 		val = val_ref&1;
 		//non-swap to swap bit
@@ -323,9 +340,9 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 	l1num = 512;
 	l2num = 512;
 	l3num = 512;
-	l4num = 512;
-	//	l4num = 511;
-	//	l4num = 1;
+	//l4num = 512;
+	l4num = 511;
+	//l4num = 1;
 	memset(&gw, 0, sizeof(struct guest_pagetable_walk));	
 
 
@@ -353,7 +370,7 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 				}
 				if(page_size_flag(gw.l3e)) //1GB huge page
 				{
-					//				hugepage_counter++;
+					//hugepage_counter++;
 					continue;
 				}
 				l2p = (unsigned long *)map_page(gw.l3e, 2, &gw);
@@ -366,62 +383,70 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 					if( !entry_valid(gw.l2e)){
 						continue;
 					}
-					if(page_size_flag(gw.l2e)) //2MB huge page
+
+					if( page_size_flag(gw.l2e) ) //2MB huge page
 					{
 						total += 512;
-						hugepage_counter++;
+						//printf("%lx\n", gw.l2e);
+						//hugepage_counter++;
+
+						if( get_bit( gw.l2e, 1, 63) ){
+							gw.va = get_vaddr(0, l2offset, l3offset, l4offset);
+							if( !pte_entry_valid(gw.l2e)){
+								compare_swap(table, &gw, l1offset, 0, 1);
+							}
+							else{
+								hugepage_counter++;
+								compare_swap(table, &gw, l1offset, 1, 1);
+							}
+						}
 						continue;
 					}
+
 					l1p = (unsigned long *)map_page(gw.l2e, 1, &gw);
 					if(l1p == NULL){
 						continue;
 					}
 					for(l1offset=0; l1offset<l1num; l1offset++)
 					{
-						total++;
 						gw.l1e = l1p[l1offset];
 						gw.va = get_vaddr(l1offset, l2offset, l3offset, l4offset);
 
 						if(gw.va == 0 || gw.l1e==0)
 							continue;
-
 						if( !pte_entry_valid(gw.l1e))
 						{
-							if(get_access_bit(gw.l1e)==1){
-								access++;
-								//							continue;
-							}
 
 							flag = gw.l1e & 0xfff;
 							count++;
 							int ret;
-							ret = compare_swap(table, &gw, l1offset, 0);
-							/*						if(os_type == 0) //linux
-													{
-													if( ( !( flag & (PAGE_PRESENT)))
-													&& (gw.l1e != 0) 
-													&&  ( !(flag & PAGE_FILE) ) 
-													)
-													{
-													int ret;
-													ret = compare_swap(table, &gw, l1offset, 0);
-													if(ret==1)
-													{
-													table->non2s++;	
-													}
-													else if(ret == -1)
-													printf("hash alloc error\n");
-													count++;									
-													}
-													}
-													else if(os_type == 1) //windows
-													{
-													if(  ((flag & PAGE_PRESENT)==0 )  
-													&& ( gw.l1e!= 0)
-													&& ( (flag & ((0x1f)<<5)) != 0 )
-													)
-													{
-							//                                if( (flag & ((0x3<<10))) == 0){ //trasition or swap_hash
+							ret = compare_swap(table, &gw, l1offset, 0, 0);
+							/*if(os_type == 0) //linux
+							  {
+							  if( ( !( flag & (PAGE_PRESENT)))
+							  && (gw.l1e != 0) 
+							  &&  ( !(flag & PAGE_FILE) ) 
+							  )
+							  {
+							  int ret;
+							  ret = compare_swap(table, &gw, l1offset, 0);
+							  if(ret==1)
+							  {
+							  table->non2s++;	
+							  }
+							  else if(ret == -1)
+							  printf("hash alloc error\n");
+							  count++;									
+							  }
+							  }
+							  else if(os_type == 1) //windows
+							  {
+							  if(  ((flag & PAGE_PRESENT)==0 )  
+							  && ( gw.l1e!= 0)
+							  && ( (flag & ((0x1f)<<5)) != 0 )
+							  )
+							  {
+							//if( (flag & ((0x3<<10))) == 0){ //trasition or swap_hash
 							count++;
 							int ret;
 							ret = compare_swap(table, &gw, l1offset, 0);
@@ -440,7 +465,8 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 							int ret;
 //       						total_valid_calculate( (((gw.l1e)>>12)&ADDR_MASK ), table->total_valid_pages);
                             (table->total_valid_pages)++;  						
-							ret = compare_swap(table, &gw, l1offset, 1);
+							ret = compare_swap(table, &gw, l1offset, 1, 0);
+							total++;
 						}
 					}	 
 					munmap(l1p, XC_PAGE_SIZE);
@@ -470,10 +496,9 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 
 BUSERR: 
 
-
-/*	if(table->non2s != 0)
-		printf("###All_pages:%lu count:%lu[M] non2s:%lu s2non:%lu access:%lu hugepage_counter:%u cr3:%lx###\n", 
-				total, count/256, table->non2s, table->s2non, access, hugepage_counter, dtb);*/
+//	if(table->non2s != 0)
+//		printf("###All_pages:%lu count:%lu[M] non2s:%lu s2non:%lu total_page: %lu hugepage_counter:%u cr3:%lx###\n", 
+//				total, count/256, table->non2s, table->s2non, table->total_valid_pages, hugepage_counter, dtb);
 	table->count = count;
 	return count;
 }
@@ -529,18 +554,23 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 	unsigned long check_cr3_num = 0;
 	SYSTEM_MAP *system_map;
 
+	unsigned int tmp = 0;
+
 	while(it != list.end())
 	{
 		struct hash_table &h = it->second;
 		unsigned long cr3 = it->first;
 		check_cr3_num++;
 
+
 		if(h.check == 1){
 			HASHMAP::iterator hashIt = h.h.begin();
 			while(hashIt != h.h.end()){
 				byte valid_bit = (hashIt->second.present_times) & 1;
 				byte val_ref = hashIt->second.present_times;
-				unsigned long paddr = hashIt->second.paddr;
+
+				unsigned long paddr = get_paddr(hashIt->second.paddr);
+				char huge_bit = get_huge_bit(hashIt->second.paddr);
 
 				if(valid_bit == 0){
 					system_map = &system_map_swap;
@@ -558,11 +588,15 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 					 }
 					 else{
 						system_map->insert(pair<unsigned long, byte>(paddr, 1));
-						(h.activity_page)[valid_bit]++;
+						if(huge_bit == 0)
+							(h.activity_page)[valid_bit]++;
+						else{
+							(h.activity_page)[valid_bit] += 512;
+							tmp++;
+						}
 					 }
 
 				}
-
 				hashIt++;
 			}
 
@@ -570,6 +604,8 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 			result[1] += h.activity_page[1];
 			result[2] += h.total_valid_pages;
 		}
+
+//		cout<<tmp<<" "<<result[1]<<endl;
 
 		h.check = 0;
 		it++;

@@ -53,22 +53,23 @@ int main(int argc, char *argv[])
 	}
 
 
+
 	while(1){
 		get_cr3_hypercall(cr3_list, list_size, fd);
-	
-//		list_size = 5; //limit to size 5
+
+		cr3_list[0] = 0x3bdb6000;
+		list_size = 1; //limit to size 5
 
 		system_map_wks.clear();
 		system_map_swap.clear();
 	//	system_map_total_valid.clear();
 		total_change_page = each_change_page = result[0] = result[1] = result[2] = 0;;
 
-
 		each_change_page = check_cr3_list(data_map, cr3_list, list_size);
 
 		calculate_all_page(data_map, result);
 
-		printf("Invalid Memory:%lu[M] Valid Memory:%lu[M] Total valid Memory:%lu[M] map size:%lu[M] round %d\n\n", 
+		printf("InvalidMemory:%lu[M] ValidMemory:%lu[M] UsedMemory:%lu[M] mapSize:%lu[M] round %d\n\n", 
 					result[0]/256, result[1]/256, result[2]/256, data_map[cr3_list[0]].h.size()/(1024*1024), round);
 
 		walk_cr3_list(data_map, cr3_list, list_size, round, gw);
