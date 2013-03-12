@@ -53,11 +53,13 @@ int main(int argc, char *argv[])
 	}
 
 
+	int ttt=0; 
 
 	while(1){
+	 	ttt++;
 		get_cr3_hypercall(cr3_list, list_size, fd);
 
-		cr3_list[0] = 0x3bdb6000;
+		cr3_list[0] = 0x38830000;
 		list_size = 1; //limit to size 5
 
 		system_map_wks.clear();
@@ -74,8 +76,22 @@ int main(int argc, char *argv[])
 
 		walk_cr3_list(data_map, cr3_list, list_size, round, gw);
 
+
+		SYSTEM_MAP::iterator hashIt = system_map_swap.begin();
+		while(hashIt != system_map_swap.end()){
+			char tmp;
+			tmp = hashIt->second;
+			printf("%lu : %d\n", hashIt->first, tmp);
+			hashIt++;
+		}
+
+
 		round++;
 		retrieve_list(data_map, round);
+
+		if(ttt==2)
+			break;
+
 		sleep(2);		
 	}
 

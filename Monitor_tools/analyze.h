@@ -26,7 +26,7 @@ typedef unsigned long addr_t;
 typedef unsigned long mfn_t;
 typedef char byte;
 typedef map<unsigned long, struct hash_table> DATAMAP;
-typedef map<unsigned long, byte> SYSTEM_MAP;
+typedef map<unsigned long, unsigned int> SYSTEM_MAP;
 
 sigjmp_buf sigbuf;
 
@@ -86,7 +86,7 @@ byte get_change_number(byte value)
 	number = (value>>1) & 0x7f;
 	return number;
 } 
-int get_bit(unsigned long entry, int num, int position)
+unsigned long get_bit(unsigned long entry, int num, int position)
 {
 	unsigned long mask = 0;
 	unsigned long i, value;
@@ -271,9 +271,9 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 	 * I assume bit 13~48 also represent swap file offset
 	 * */
 	if(huge_bit == 0)
-		paddr = ((gw->l1e) & ADDR_MASK)>>12;
+		paddr = ((gw->l1e) & ADDR_MASK)>>(unsigned long)12;
 	else
-		paddr = ((gw->l2e) & ADDR_MASK)>>12;
+		paddr = ((gw->l2e) & ADDR_MASK)>>(unsigned long)12;
 
 
 	/*insert into each process map*/
@@ -281,7 +281,7 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 	if(it == table->h.end()){
 		mapData mapVal;
 		mapVal.present_times = valid_bit;
-		mapVal.paddr = (paddr<<12);
+		mapVal.paddr = (paddr<<(unsigned long)12);
 		mapVal.paddr |= huge_bit;
 
 		table->h.insert(map<unsigned long, mapData>::value_type(vkey, mapVal));
@@ -289,7 +289,7 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 	}
 	else{
 		char &val_ref = table->h[vkey].present_times;	
-		table->h[vkey].paddr = (paddr<<12);
+		table->h[vkey].paddr = (paddr<<(unsigned long)12);
 		table->h[vkey].paddr |= huge_bit;
 
 		val = val_ref&1;
@@ -312,7 +312,6 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 			(table->s2non)++;
 			ret = 0;		
 		}
-
 
 		if(val!=valid_bit){
 			val_ref &= 0xfe;
@@ -393,6 +392,7 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 						if( get_bit( gw.l2e, 1, 63) ){
 							gw.va = get_vaddr(0, l2offset, l3offset, l4offset);
 							if( !pte_entry_valid(gw.l2e)){
+								printf("huge swap\n");
 								compare_swap(table, &gw, l1offset, 0, 1);
 							}
 							else{
@@ -497,8 +497,8 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 BUSERR: 
 
 //	if(table->non2s != 0)
-//		printf("###All_pages:%lu count:%lu[M] non2s:%lu s2non:%lu total_page: %lu hugepage_counter:%u cr3:%lx###\n", 
-//				total, count/256, table->non2s, table->s2non, table->total_valid_pages, hugepage_counter, dtb);
+		printf("###All_pages:%lu count:%lu[M] non2s:%lu s2non:%lu total_page: %lu hugepage_counter:%u cr3:%lx###\n", 
+				total, count/256, table->non2s, table->s2non, table->total_valid_pages, hugepage_counter, dtb);
 	table->count = count;
 	return count;
 }
@@ -579,12 +579,20 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 					system_map = &system_map_wks;
 				}
 
-				if(  (get_change_number(val_ref) >= CHANGE_LIMIT && valid_bit == 0) || valid_bit == 1 ){
+				//if(  (get_change_number(val_ref) >= CHANGE_LIMIT && valid_bit == 0) || valid_bit == 1 ){
+				if(  ( valid_bit == 0) || valid_bit == 1 ){
+
 					/*check if paddr already stored in system_map*/
 					if(system_map->count(paddr) > 0){
-						byte *paddr_times = &(system_map->at(paddr));
-						if((*paddr_times) < 0xff)
+						unsigned int *paddr_times = &(system_map->at(paddr));
+						if((*paddr_times) < 0xffffffff){
 							*paddr_times += 1;
+						}
+						
+						if(valid_bit == 0 ){
+							tmp++;
+						}
+
 					 }
 					 else{
 						system_map->insert(pair<unsigned long, byte>(paddr, 1));
@@ -592,7 +600,6 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 							(h.activity_page)[valid_bit]++;
 						else{
 							(h.activity_page)[valid_bit] += 512;
-							tmp++;
 						}
 					 }
 
@@ -605,7 +612,7 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 			result[2] += h.total_valid_pages;
 		}
 
-//		cout<<tmp<<" "<<result[1]<<endl;
+		cout<<"Swap replicate:"<<tmp<<" "<<result[1]<<endl;
 
 		h.check = 0;
 		it++;
