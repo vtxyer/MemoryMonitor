@@ -270,10 +270,16 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 	/*!!!!!! NOTE !!!!!!!
 	 * I assume bit 13~48 also represent swap file offset
 	 * */
-	if(huge_bit == 0)
+	if(huge_bit == 0 && valid_bit == 1)
 		paddr = ((gw->l1e) & ADDR_MASK)>>(unsigned long)12;
 	else
 		paddr = ((gw->l2e) & ADDR_MASK)>>(unsigned long)12;
+
+
+	if(valid_bit == 0){
+		paddr = ((gw->l2e) & ADDR_MASK);
+		paddr += (unsigned long)offset;
+	}
 
 
 	/*insert into each process map*/
@@ -393,11 +399,11 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 							gw.va = get_vaddr(0, l2offset, l3offset, l4offset);
 							if( !pte_entry_valid(gw.l2e)){
 								printf("huge swap\n");
-								compare_swap(table, &gw, l1offset, 0, 1);
+								compare_swap(table, &gw, l2offset, 0, 1);
 							}
 							else{
 								hugepage_counter++;
-								compare_swap(table, &gw, l1offset, 1, 1);
+								compare_swap(table, &gw, l2offset, 1, 1);
 							}
 						}
 						continue;
@@ -497,8 +503,8 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 BUSERR: 
 
 //	if(table->non2s != 0)
-		printf("###All_pages:%lu count:%lu[M] non2s:%lu s2non:%lu total_page: %lu hugepage_counter:%u cr3:%lx###\n", 
-				total, count/256, table->non2s, table->s2non, table->total_valid_pages, hugepage_counter, dtb);
+//		printf("###All_pages:%lu count:%lu[M] non2s:%lu s2non:%lu total_page: %lu hugepage_counter:%u cr3:%lx###\n", 
+//				total, count/256, table->non2s, table->s2non, table->total_valid_pages, hugepage_counter, dtb);
 	table->count = count;
 	return count;
 }
@@ -554,7 +560,6 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 	unsigned long check_cr3_num = 0;
 	SYSTEM_MAP *system_map;
 
-	unsigned int tmp = 0;
 
 	while(it != list.end())
 	{
@@ -579,9 +584,8 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 					system_map = &system_map_wks;
 				}
 
-				//if(  (get_change_number(val_ref) >= CHANGE_LIMIT && valid_bit == 0) || valid_bit == 1 ){
-				if(  ( valid_bit == 0) || valid_bit == 1 ){
-
+				if(  (get_change_number(val_ref) >= CHANGE_LIMIT && valid_bit == 0) || valid_bit == 1 ){
+//				if(  ( valid_bit == 0) || valid_bit == 1 ){
 					/*check if paddr already stored in system_map*/
 					if(system_map->count(paddr) > 0){
 						unsigned int *paddr_times = &(system_map->at(paddr));
@@ -589,10 +593,6 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 							*paddr_times += 1;
 						}
 						
-						if(valid_bit == 0 ){
-							tmp++;
-						}
-
 					 }
 					 else{
 						system_map->insert(pair<unsigned long, byte>(paddr, 1));
@@ -612,7 +612,6 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 			result[2] += h.total_valid_pages;
 		}
 
-		cout<<"Swap replicate:"<<tmp<<" "<<result[1]<<endl;
 
 		h.check = 0;
 		it++;
