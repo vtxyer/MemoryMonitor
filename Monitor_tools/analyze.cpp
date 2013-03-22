@@ -3,13 +3,30 @@
 
 #include "analyze.h"
 #include <set>
+#include <fstream>
 using namespace std;
 
+fstream fin;
 
 void handler(int sig){
 //	printf("signal bus error\n");
 	siglongjmp(sigbuf, 1);
 }
+
+
+int file_cr3(unsigned long *cr3_list){
+	fin.open("bb", ios::in);
+	int num;
+	num = 0;
+	string str;
+	while(getline(fin, str)){
+		cr3_list[num] = strtol(str.c_str(), NULL, 16);
+		num++;
+	}
+
+	return num;
+}
+
 
 int main(int argc, char *argv[])  
 { 
@@ -19,7 +36,7 @@ int main(int argc, char *argv[])
 	struct hash_table global_hash;
 	DATAMAP data_map;
 	unsigned int round = 0;
-	unsigned long cr3_list[30];
+	unsigned long cr3_list[RECENT_CR3_SIZE];
 	unsigned long result[10];
 	struct guest_pagetable_walk gw;
 	
@@ -55,11 +72,13 @@ int main(int argc, char *argv[])
 
 	int ttt=0; 
 
+//	list_size = file_cr3(cr3_list);
+
 	while(1){
 	 	ttt++;
 		get_cr3_hypercall(cr3_list, list_size, fd);
 
-//		cr3_list[0] = 0x388ae000;
+//		cr3_list[0] = 0x3bb2c000;
 //		list_size = 1; //limit to size 5
 
 		system_map_wks.clear();
@@ -71,19 +90,24 @@ int main(int argc, char *argv[])
 
 		calculate_all_page(data_map, result);
 
-		printf("InvalidMemory:%lu[M] ValidMemory:%lu[M] UsedMemory:%lu[M] mapSize:%lu[M] round %d\n\n", 
-					result[0]/256, result[1]/256, result[2]/256, data_map[cr3_list[0]].h.size()/(1024*1024), round);
+		printf("InvalidMemory:%lu[M] ValidMemory:%lu[M] Round %d\n\n", 
+					result[0]/256, result[1]/256, round);
 
 		walk_cr3_list(data_map, cr3_list, list_size, round, gw);
 
 
 		SYSTEM_MAP::iterator hashIt = system_map_swap.begin();
+		unsigned long swap_counter = 0;
+		unsigned long time_counter = 0;
 		while(hashIt != system_map_swap.end()){
-			char tmp;
+			unsigned long tmp;
 			tmp = hashIt->second;
-//			printf("%lu : %d\n", hashIt->first, tmp);
+//			printf("%lx : %d\n", hashIt->first, tmp);
+			swap_counter += tmp;
+			time_counter++;
 			hashIt++;
 		}
+		printf("Swap counter:%lu times:%lu\n", swap_counter, time_counter);
 
 
 		round++;

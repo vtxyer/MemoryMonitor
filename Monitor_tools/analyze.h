@@ -17,16 +17,16 @@ extern "C"{
 #include <map>
 using namespace std;
 
-#define CHANGE_LIMIT 1
+#define CHANGE_LIMIT 2
 #define MAX_ROUND_INTERVAL 999
 #define ADDR_MASK 0x0000ffffffffffff
-#define RECENT_CR3_SIZE 30
+#define RECENT_CR3_SIZE 50
 
 typedef unsigned long addr_t;
 typedef unsigned long mfn_t;
 typedef char byte;
 typedef map<unsigned long, struct hash_table> DATAMAP;
-typedef map<unsigned long, unsigned int> SYSTEM_MAP;
+typedef map<unsigned long, unsigned long> SYSTEM_MAP;
 
 sigjmp_buf sigbuf;
 
@@ -267,19 +267,28 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 
 
 	vkey = gw->va;
+
 	/*!!!!!! NOTE !!!!!!!
 	 * I assume bit 13~48 also represent swap file offset
 	 * */
-	if(huge_bit == 0 && valid_bit == 1)
-		paddr = ((gw->l1e) & ADDR_MASK)>>(unsigned long)12;
-	else
-		paddr = ((gw->l2e) & ADDR_MASK)>>(unsigned long)12;
-
-
-	if(valid_bit == 0){
-		paddr = ((gw->l2e) & ADDR_MASK);
-		paddr += (unsigned long)offset;
+	if(valid_bit == 1){
+		if(huge_bit == 0 )
+			paddr = ((gw->l1e) & ADDR_MASK)>>(unsigned long)12;
+		else
+			paddr = ((gw->l2e) & ADDR_MASK)>>(unsigned long)12;
 	}
+	else{
+		if(huge_bit == 0 )
+			paddr = ((gw->l1e) & ADDR_MASK)>>(unsigned long)8;
+		else
+			paddr = ((gw->l2e) & ADDR_MASK)>>(unsigned long)8;
+	}
+
+
+/*	if(valid_bit == 0){
+		paddr = ((gw->l2e) & ADDR_MASK);
+		paddr += offset*8;
+	}*/
 
 
 	/*insert into each process map*/
@@ -345,8 +354,8 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 	l1num = 512;
 	l2num = 512;
 	l3num = 512;
-	//l4num = 512;
-	l4num = 511;
+	l4num = 512;
+//	l4num = 511;
 	//l4num = 1;
 	memset(&gw, 0, sizeof(struct guest_pagetable_walk));	
 
@@ -391,21 +400,21 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 
 					if( page_size_flag(gw.l2e) ) //2MB huge page
 					{
-						total += 512;
-						//printf("%lx\n", gw.l2e);
-						//hugepage_counter++;
 
-						if( get_bit( gw.l2e, 1, 63) ){
+						//for ignore already map page => huge page only see User space
+						if( get_bit( gw.l2e, 1, 2) ){
+							total += 512;
+							hugepage_counter++;					
 							gw.va = get_vaddr(0, l2offset, l3offset, l4offset);
 							if( !pte_entry_valid(gw.l2e)){
 								printf("huge swap\n");
-								compare_swap(table, &gw, l2offset, 0, 1);
+								compare_swap(table, &gw, l2offset, 0, 1);								
 							}
 							else{
-								hugepage_counter++;
 								compare_swap(table, &gw, l2offset, 1, 1);
 							}
 						}
+
 						continue;
 					}
 
@@ -418,53 +427,15 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 						gw.l1e = l1p[l1offset];
 						gw.va = get_vaddr(l1offset, l2offset, l3offset, l4offset);
 
-						if(gw.va == 0 || gw.l1e==0)
+						/*Even gw.l1e==0 also continue*/
+						if( gw.va == 0 )
 							continue;
+
 						if( !pte_entry_valid(gw.l1e))
 						{
-
-							flag = gw.l1e & 0xfff;
 							count++;
 							int ret;
 							ret = compare_swap(table, &gw, l1offset, 0, 0);
-							/*if(os_type == 0) //linux
-							  {
-							  if( ( !( flag & (PAGE_PRESENT)))
-							  && (gw.l1e != 0) 
-							  &&  ( !(flag & PAGE_FILE) ) 
-							  )
-							  {
-							  int ret;
-							  ret = compare_swap(table, &gw, l1offset, 0);
-							  if(ret==1)
-							  {
-							  table->non2s++;	
-							  }
-							  else if(ret == -1)
-							  printf("hash alloc error\n");
-							  count++;									
-							  }
-							  }
-							  else if(os_type == 1) //windows
-							  {
-							  if(  ((flag & PAGE_PRESENT)==0 )  
-							  && ( gw.l1e!= 0)
-							  && ( (flag & ((0x1f)<<5)) != 0 )
-							  )
-							  {
-							//if( (flag & ((0x3<<10))) == 0){ //trasition or swap_hash
-							count++;
-							int ret;
-							ret = compare_swap(table, &gw, l1offset, 0);
-							if(ret==1)
-							{
-							table->non2s++;	
-							}
-							else if(ret == -1)
-							printf("hash alloc error\n");
-							//                                }
-							}
-							}*/
 						}
 						else
 						{
@@ -489,6 +460,7 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 	}
 	else{
 		/*bus error*/
+		table->h.clear();		
 		if(l1p != NULL)
 			munmap(l1p, XC_PAGE_SIZE);
 		if(l2p != NULL)
@@ -503,8 +475,8 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 BUSERR: 
 
 //	if(table->non2s != 0)
-//		printf("###All_pages:%lu count:%lu[M] non2s:%lu s2non:%lu total_page: %lu hugepage_counter:%u cr3:%lx###\n", 
-//				total, count/256, table->non2s, table->s2non, table->total_valid_pages, hugepage_counter, dtb);
+//		printf("###All_pages:%lu swap_page:%lu non2s:%lu s2non:%lu total_page: %lu hugepage_counter:%u cr3:%lx###\n", 
+//				total, count, table->non2s, table->s2non, table->total_valid_pages, hugepage_counter, dtb);
 	table->count = count;
 	return count;
 }
@@ -567,7 +539,6 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 		unsigned long cr3 = it->first;
 		check_cr3_num++;
 
-
 		if(h.check == 1){
 			HASHMAP::iterator hashIt = h.h.begin();
 			while(hashIt != h.h.end()){
@@ -584,26 +555,26 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 					system_map = &system_map_wks;
 				}
 
+
 				if(  (get_change_number(val_ref) >= CHANGE_LIMIT && valid_bit == 0) || valid_bit == 1 ){
 //				if(  ( valid_bit == 0) || valid_bit == 1 ){
 					/*check if paddr already stored in system_map*/
 					if(system_map->count(paddr) > 0){
-						unsigned int *paddr_times = &(system_map->at(paddr));
-						if((*paddr_times) < 0xffffffff){
-							*paddr_times += 1;
-						}
-						
-					 }
-					 else{
+						(system_map->at(paddr))++;
+					}
+					else{
 						system_map->insert(pair<unsigned long, byte>(paddr, 1));
-						if(huge_bit == 0)
+						if(huge_bit == 0){
 							(h.activity_page)[valid_bit]++;
+						}
 						else{
 							(h.activity_page)[valid_bit] += 512;
 						}
-					 }
-
+					}
 				}
+//				if(hashIt->first == 0x7f4cb91ad000 || hashIt->first == 0x7ff7399f4000 && valid_bit == 1){
+//					printf("vaddr:%lx paddr:%lx valid:%d\n", hashIt->first, paddr, valid_bit);
+//				}
 				hashIt++;
 			}
 
@@ -616,6 +587,7 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 		h.check = 0;
 		it++;
 	}
+
 
 	return check_cr3_num;
 }
