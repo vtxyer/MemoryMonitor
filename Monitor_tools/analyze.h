@@ -17,7 +17,7 @@ extern "C"{
 #include <map>
 using namespace std;
 
-#define CHANGE_LIMIT 2
+#define CHANGE_LIMIT 1
 #define MAX_ROUND_INTERVAL 999
 #define ADDR_MASK 0x0000ffffffffffff
 #define RECENT_CR3_SIZE 50
@@ -33,6 +33,11 @@ sigjmp_buf sigbuf;
 struct mapData
 {
 	byte present_times;
+
+	/*
+	 * valid_bit==1 -> [63:28]:paddr, [0:0]:huge_bit
+	 * valid_bit==0 -> [63:28]:paddr, [27:1]:swap_paddr, [0:0]huge_bit
+	 * */
 	unsigned long paddr;
 };
 typedef struct mapData mapData;
@@ -98,6 +103,17 @@ unsigned long get_bit(unsigned long entry, int num, int position)
 	value >>= (unsigned long)position;
 	return value;
 }
+void clear_bit(unsigned long &addr, int start, int end){
+	unsigned long mask = 0;
+	unsigned long tmp = -1;
+	for(int i=start; i<=end; i++){
+		mask<<=1;
+		mask|=1;
+	}
+	mask <<= start;
+	mask ^= tmp;
+	addr &= mask;
+}
 
 int page_size_flag (uint64_t entry){
 	return get_bit(entry, 1, 7);
@@ -114,8 +130,25 @@ int get_huge_bit(uint64_t entry)
 }
 unsigned long get_paddr(uint64_t addr)
 {
-	return get_bit(addr, 52, 12);
+	return get_bit(addr, 36, 28);
 }
+unsigned long get_swap_id(uint64_t addr){
+	return get_bit(addr, 63, 1);
+}
+void save_paddr(unsigned long &addr, unsigned long val){
+	clear_bit(addr, 28, 63);
+	addr |= (val<<28);
+}
+void save_swap_paddr(unsigned long &addr, unsigned long val){
+	clear_bit(addr, 1, 27);
+	addr |= ((val&0xeffffff)<<1);
+}
+void save_huge_bit(unsigned long &addr, unsigned long val){
+	clear_bit(addr, 0, 0);
+	addr |= (val & 0x1);
+}
+
+
 
 unsigned long get_vaddr(unsigned long l1offset, unsigned long l2offset, unsigned long l3offset, unsigned long l4offset)
 {
@@ -271,24 +304,10 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 	/*!!!!!! NOTE !!!!!!!
 	 * I assume bit 13~48 also represent swap file offset
 	 * */
-	if(valid_bit == 1){
-		if(huge_bit == 0 )
-			paddr = ((gw->l1e) & ADDR_MASK)>>(unsigned long)12;
-		else
-			paddr = ((gw->l2e) & ADDR_MASK)>>(unsigned long)12;
-	}
-	else{
-		if(huge_bit == 0 )
-			paddr = ((gw->l1e) & ADDR_MASK)>>(unsigned long)8;
-		else
-			paddr = ((gw->l2e) & ADDR_MASK)>>(unsigned long)8;
-	}
-
-
-/*	if(valid_bit == 0){
-		paddr = ((gw->l2e) & ADDR_MASK);
-		paddr += offset*8;
-	}*/
+	if(huge_bit == 0 )
+		paddr = ((gw->l1e) & ADDR_MASK)>>(unsigned long)12;
+	else
+		paddr = ((gw->l2e) & ADDR_MASK)>>(unsigned long)12;
 
 
 	/*insert into each process map*/
@@ -296,16 +315,29 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 	if(it == table->h.end()){
 		mapData mapVal;
 		mapVal.present_times = valid_bit;
-		mapVal.paddr = (paddr<<(unsigned long)12);
-		mapVal.paddr |= huge_bit;
+
+		if(valid_bit == 1){
+			save_paddr(mapVal.paddr, paddr);
+		}
+		else{
+			save_swap_paddr(mapVal.paddr, paddr);
+		}
+		save_huge_bit(mapVal.paddr, huge_bit);
 
 		table->h.insert(map<unsigned long, mapData>::value_type(vkey, mapVal));
 		ret = 0;
 	}
 	else{
 		char &val_ref = table->h[vkey].present_times;	
-		table->h[vkey].paddr = (paddr<<(unsigned long)12);
-		table->h[vkey].paddr |= huge_bit;
+
+		if(valid_bit == 1){
+			save_paddr(table->h[vkey].paddr, paddr);
+		}
+		else{
+			save_swap_paddr(table->h[vkey].paddr, paddr);
+		}
+		save_huge_bit(table->h[vkey].paddr, huge_bit);
+
 
 		val = val_ref&1;
 		//non-swap to swap bit
@@ -318,7 +350,6 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 			}
 			ret = 1;
 			(table->non2s)++;	
-
 		}
 		//swap to non-swap bit
 		else if(val==0 && valid_bit==1){
@@ -542,17 +573,18 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 		if(h.check == 1){
 			HASHMAP::iterator hashIt = h.h.begin();
 			while(hashIt != h.h.end()){
+				unsigned long paddr;
 				byte valid_bit = (hashIt->second.present_times) & 1;
 				byte val_ref = hashIt->second.present_times;
-
-				unsigned long paddr = get_paddr(hashIt->second.paddr);
 				char huge_bit = get_huge_bit(hashIt->second.paddr);
 
 				if(valid_bit == 0){
 					system_map = &system_map_swap;
+					paddr = get_swap_id(hashIt->second.paddr);
 				}
 				else{
 					system_map = &system_map_wks;
+					paddr = get_paddr(hashIt->second.paddr);
 				}
 
 
