@@ -14,20 +14,6 @@ void handler(int sig){
 }
 
 
-int file_cr3(unsigned long *cr3_list){
-	fin.open("bb", ios::in);
-	int num;
-	num = 0;
-	string str;
-	while(getline(fin, str)){
-		cr3_list[num] = strtol(str.c_str(), NULL, 16);
-		num++;
-	}
-
-	return num;
-}
-
-
 int main(int argc, char *argv[])  
 { 
 	int fd, ret, i, list_size;  
@@ -35,9 +21,9 @@ int main(int argc, char *argv[])
 	unsigned long offset = 0;
 	struct hash_table global_hash;
 	DATAMAP data_map;
-	unsigned int round = 0;
+	unsigned long global_round = 0;
 	unsigned long cr3_list[RECENT_CR3_SIZE];
-	unsigned long result[10];
+	double result[10];
 	struct guest_pagetable_walk gw;
 	
 
@@ -68,14 +54,7 @@ int main(int argc, char *argv[])
 		printf("Init environment error\n");
 		return -1;
 	}
-
-
-	int ttt=0; 
-
-//	list_size = file_cr3(cr3_list);
-
 	while(1){
-	 	ttt++;
 		get_cr3_hypercall(cr3_list, list_size, fd);
 
 //		cr3_list[0] = 0x3bb2c000;
@@ -87,36 +66,15 @@ int main(int argc, char *argv[])
 		total_change_page = each_change_page = result[0] = result[1] = result[2] = 0;;
 
 		each_change_page = check_cr3_list(data_map, cr3_list, list_size);
-
 		calculate_all_page(data_map, result);
-
 		printf("InvalidMemory:%lu[M] ValidMemory:%lu[M] Round %d\n\n", 
-					result[0]/256, result[1]/256, round);
-
-		walk_cr3_list(data_map, cr3_list, list_size, round, gw);
-
-
-		SYSTEM_MAP::iterator hashIt = system_map_swap.begin();
-		unsigned long swap_counter = 0;
-		unsigned long time_counter = 0;
-		while(hashIt != system_map_swap.end()){
-			unsigned long tmp;
-			tmp = hashIt->second;
-//			printf("%lx : %d\n", hashIt->first, tmp);
-			swap_counter += tmp;
-			time_counter++;
-			hashIt++;
-		}
-		printf("Swap counter:%lu times:%lu\n", swap_counter, time_counter);
+					result[0]/256, result[1]/256, global_round);
+		walk_cr3_list(data_map, cr3_list, list_size, global_round, gw);
 
 
-		round++;
-		retrieve_list(data_map, round);
-
-//		if(ttt==2)
-//			break;
-
-		sleep(2);		
+		global_round++;
+		retrieve_list(data_map, global_round);
+		sleep(5);		
 	}
 
 	xc_interface_close(xch1);
