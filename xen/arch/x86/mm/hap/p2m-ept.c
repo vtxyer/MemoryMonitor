@@ -110,6 +110,10 @@ static void ept_p2m_type_to_flags(ept_entry_t *entry, p2m_type_t type, p2m_acces
             entry->r = 1;
             entry->w = entry->x = 0;
             break;
+		case p2m_ram_pte_lock:
+			entry->w = 0;
+			entry->r = entry->x = 1;
+			break;
     }
 
 
@@ -962,7 +966,10 @@ unsigned long do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf
             }
             spin_unlock(&(d->recent_cr3_lock));
             break;
-	
+		case 4:
+			/*lock assigned page*/
+			p2m_change_type(p2m, arg, p2m_ram_rw, p2m_ram_pte_lock);
+			break;	
 	}
     return 0;
 }

@@ -17,7 +17,7 @@ extern "C"{
 #include <map>
 using namespace std;
 
-#define CHANGE_LIMIT 1
+#define CHANGE_LIMIT 3
 #define MAX_ROUND_INTERVAL 999
 #define ADDR_MASK 0x0000ffffffffffff
 #define RECENT_CR3_SIZE 50
@@ -589,7 +589,7 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 
 
 				if(  (get_change_number(val_ref) >= CHANGE_LIMIT && valid_bit == 0) || valid_bit == 1 ){
-//				if(  ( valid_bit == 0) || valid_bit == 1 ){
+//				if(  ( valid_bit == 0 ){
 					/*check if paddr already stored in system_map*/
 					if(system_map->count(paddr) > 0){
 						(system_map->at(paddr))++;
@@ -604,9 +604,6 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 						}
 					}
 				}
-//				if(hashIt->first == 0x7f4cb91ad000 || hashIt->first == 0x7ff7399f4000 && valid_bit == 1){
-//					printf("vaddr:%lx paddr:%lx valid:%d\n", hashIt->first, paddr, valid_bit);
-//				}
 				hashIt++;
 			}
 

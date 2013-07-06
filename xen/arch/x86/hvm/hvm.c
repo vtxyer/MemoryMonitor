@@ -1101,6 +1101,20 @@ void hvm_triple_fault(void)
     domain_shutdown(v->domain, SHUTDOWN_reboot);
 }
 
+
+
+void* map_guest_paddr(struct vcpu *u, struct p2m_domain *p2m, unsigned long cr3, unsigned long gpa)
+{
+	unsigned long mfn;
+	unsigned long mask;
+	p2m_access_t a;
+	p2m_type_t pt;
+
+	mask = 0xfff;
+	mfn = p2m->get_entry(p2m, gpa>>PAGE_SHIFT, &pt, &a, 0);
+	return map_domain_page(mfn_x(mfn)) + (gpa & mask);
+}
+
 bool_t hvm_hap_nested_page_fault(unsigned long gpa,
                                  bool_t gla_valid,
                                  unsigned long gla,
@@ -1116,7 +1130,30 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
     struct vcpu *v = current;
     struct p2m_domain *p2m = p2m_get_hostp2m(v->domain);
 
+	unsigned long cr3;
+	struct cpu_user_regs *regs = guest_cpu_user_regs();
+	unsigned long *pte_content, *data_content;
+	unsigned long data_page_paddr;
+
     mfn = gfn_to_mfn_type_current(p2m, gfn, &p2mt, &p2ma, p2m_guest);
+
+	/*<VT> add*/
+	if(p2mt == p2m_ram_pte_lock){
+		cr3 = v->arch.hvm_vcpu.guest_cr[3]; 
+		pte_content = (unsigned long *)map_guest_paddr(v, p2m, cr3, gpa);
+		data_page_paddr = ((*pte_content)>>12);
+		data_page_paddr &= 0xfffffffff;  
+		data_content = (unsigned long *)map_guest_paddr(v, p2m, cr3, data_page_paddr);
+		
+		printk("<VT> cr3:%lx gfn:%lx pte_content:%lx data_content:%lx eax:%lx edx:%lx\n",
+			cr3, gfn, *pte_content, *data_content, regs->eax, regs->edx
+		);
+		p2m_change_type(p2m, gfn, p2m_ram_pte_lock, p2m_ram_rw);
+
+		unmap_domain_page((void *)pte_content);
+		unmap_domain_page((void *)data_content);
+	}
+
 
     /* Check access permissions first, then handle faults */
     if ( access_valid && (mfn_x(mfn) != INVALID_MFN) )
