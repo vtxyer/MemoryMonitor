@@ -117,7 +117,7 @@ int main(int argc, char *argv[])
 //		if(ttt==2)
 //			break;
 
-		sleep(2);		
+		sleep(5);		
 	}
 
 	xc_interface_close(xch1);

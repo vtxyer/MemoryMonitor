@@ -17,7 +17,7 @@ extern "C"{
 #include <map>
 using namespace std;
 
-#define CHANGE_LIMIT 3
+#define CHANGE_LIMIT 1
 #define MAX_ROUND_INTERVAL 999
 #define ADDR_MASK 0x0000ffffffffffff
 #define RECENT_CR3_SIZE 50
