@@ -1,12 +1,19 @@
-#include <iostream>
-#include <csignal>
-
-#include "analyze.h"
+#include "define.h"
 #include <set>
 #include <fstream>
+#include <iostream>
+#include <csignal>
 using namespace std;
 
 fstream fin;
+int domID;
+unsigned int round;
+SYSTEM_MAP system_map_wks;
+SYSTEM_MAP system_map_swap;
+map<unsigned int, Sampled_data> sample_result;
+xc_interface *xch4, *xch3, *xch2, *xch1;
+sigjmp_buf sigbuf;
+
 
 void handler(int sig){
 //	printf("signal bus error\n");
@@ -36,20 +43,18 @@ int main(int argc, char *argv[])
 	unsigned long offset = 0;
 	struct hash_table global_hash;
 	DATAMAP data_map;
-	unsigned int round = 0;
 	unsigned long cr3_list[RECENT_CR3_SIZE];
 	unsigned long result[10];
 	struct guest_pagetable_walk gw;
 	
 
 	signal(SIGBUS, handler);
-
 	if(argc<2){
 		printf("%s domID\n", argv[0]);
 		exit(1);
 	}
 	domID = atoi(argv[1]);
-
+	round = 0;
 	xch1 =  xc_interface_open(0,0,0);
 	xch2 =  xc_interface_open(0,0,0);
 	xch3 =  xc_interface_open(0,0,0);
@@ -97,27 +102,13 @@ int main(int argc, char *argv[])
 		walk_cr3_list(data_map, cr3_list, list_size, round, gw);
 
 
-		SYSTEM_MAP::iterator hashIt = system_map_swap.begin();
-		unsigned long swap_counter = 0;
-		unsigned long time_counter = 0;
-		while(hashIt != system_map_swap.end()){
-			unsigned long tmp;
-			tmp = hashIt->second;
-//			printf("%lx : %d\n", hashIt->first, tmp);
-			swap_counter += tmp;
-			time_counter++;
-			hashIt++;
-		}
-		printf("Swap counter:%lu times:%lu\n", swap_counter, time_counter);
-
-
 		round++;
 		retrieve_list(data_map, round);
 
 //		if(ttt==2)
 //			break;
 
-		sleep(5);		
+		sleep(2);		
 	}
 
 	xc_interface_close(xch1);

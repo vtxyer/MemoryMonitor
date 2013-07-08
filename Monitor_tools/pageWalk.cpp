@@ -1,230 +1,4 @@
-extern "C"{
-#include <stdio.h>  
-#include <stdlib.h>  
-#include <errno.h>  
-#include <sys/ioctl.h>  
-#include <sys/types.h>  
-#include <fcntl.h>  
-#include <string.h>  
-#include <xenctrl.h>  
-#include <xen/sys/privcmd.h> 
-#include <unistd.h>
-#include <string.h>
-#include <sys/mman.h>
-#include <xs.h>
-#include <setjmp.h>
-}
-#include <map>
-using namespace std;
-
-#define CHANGE_LIMIT 1
-#define MAX_ROUND_INTERVAL 999
-#define ADDR_MASK 0x0000ffffffffffff
-#define RECENT_CR3_SIZE 50
-
-typedef unsigned long addr_t;
-typedef unsigned long mfn_t;
-typedef char byte;
-typedef map<unsigned long, struct hash_table> DATAMAP;
-typedef map<unsigned long, unsigned long> SYSTEM_MAP;
-
-sigjmp_buf sigbuf;
-
-struct mapData
-{
-	byte present_times;
-
-	/*
-	 * valid_bit==1 -> [63:28]:paddr, [0:0]:huge_bit
-	 * valid_bit==0 -> [63:28]:paddr, [27:1]:swap_paddr, [0:0]huge_bit
-	 * */
-	unsigned long paddr;
-};
-typedef struct mapData mapData;
-typedef map<unsigned long, mapData> HASHMAP;
-
-struct hash_table
-{
-	map<unsigned long, mapData> h; //bit 0=>valid_bit, 1~8 => counter
-	unsigned long cr3;
-	unsigned long non2s, s2non, count;
-	unsigned long change_page, total_valid_pages;
-	unsigned long activity_page[2];//0->invalid, 1->valid
-	unsigned int round;
-	byte check;
-};
-struct guest_pagetable_walk
-{
-	unsigned long va;
-	unsigned long l4e;            /* Guest's level 4 entry */
-	unsigned long l3e;            /* Guest's level 3 entry */
-	unsigned long l2e;            /* Guest's level 2 entry */
-	unsigned long l1e;            /* Guest's level 1 entry (or fabrication) */
-	mfn_t l4mfn;                /* MFN that the level 4 entry was in */
-	mfn_t l3mfn;                /* MFN that the level 3 entry was in */
-	mfn_t l2mfn;                /* MFN that the level 2 entry was in */
-	mfn_t l1mfn;                /* MFN that the level 1 entry was in */
-};
-
-int domID;
-SYSTEM_MAP system_map_wks;
-SYSTEM_MAP system_map_swap;
-//SYSTEM_MAP system_map_total_valid;
-xc_interface *xch4, *xch3, *xch2, *xch1;
-
-//1~7 bits represent change number
-int add_change_number(byte &value)
-{
-	byte number;
-	number = (value>>1) & 0x7f;
-	if(number<0x7f)
-	{
-		number += 1;
-		number <<= 1;
-		number |= (value&1);
-		value = number;
-	}
-}
-byte get_change_number(byte value)
-{
-	byte number;
-	number = (value>>1) & 0x7f;
-	return number;
-} 
-unsigned long get_bit(unsigned long entry, int num, int position)
-{
-	unsigned long mask = 0;
-	unsigned long i, value;
-	for(i=0; i<num; i++){
-		mask<<=(unsigned long)1;
-		mask+=1;
-	}
-	value = (entry&(mask<<(unsigned long)position));
-	value >>= (unsigned long)position;
-	return value;
-}
-void clear_bit(unsigned long &addr, int start, int end){
-	unsigned long mask = 0;
-	unsigned long tmp = -1;
-	for(int i=start; i<=end; i++){
-		mask<<=1;
-		mask|=1;
-	}
-	mask <<= start;
-	mask ^= tmp;
-	addr &= mask;
-}
-
-int page_size_flag (uint64_t entry){
-	return get_bit(entry, 1, 7);
-}
-int entry_present(uint64_t entry){
-	return get_bit(entry, 1, 0);
-}
-int get_access_bit(uint64_t entry){
-	return get_bit(entry, 1, 5);
-}
-int get_huge_bit(uint64_t entry)
-{
-	return get_bit(entry, 1, 0);
-}
-unsigned long get_paddr(uint64_t addr)
-{
-	return get_bit(addr, 36, 28);
-}
-unsigned long get_swap_id(uint64_t addr){
-	return get_bit(addr, 63, 1);
-}
-void save_paddr(unsigned long &addr, unsigned long val){
-	clear_bit(addr, 28, 63);
-	addr |= (val<<28);
-}
-void save_swap_paddr(unsigned long &addr, unsigned long val){
-	clear_bit(addr, 1, 27);
-	addr |= ((val&0xeffffff)<<1);
-}
-void save_huge_bit(unsigned long &addr, unsigned long val){
-	clear_bit(addr, 0, 0);
-	addr |= (val & 0x1);
-}
-
-
-
-unsigned long get_vaddr(unsigned long l1offset, unsigned long l2offset, unsigned long l3offset, unsigned long l4offset)
-{
-	unsigned long va = 0, tmp;
-
-	tmp = 0;
-	tmp |= (l1offset<<12);
-	va |= tmp;
-	tmp = 0;
-	tmp |= (l2offset<<21);
-	va |= tmp;tmp = 0;
-	tmp |= (l3offset<<30);
-	va |= tmp;tmp = 0;
-	tmp |= (l4offset<<39);
-	va |= tmp;
-
-	return va;
-}
-int entry_valid(unsigned long entry)
-{
-	int flag = entry & 0xfff;
-	uint32_t gflags, mflags, iflags, rc = 0;
-
-	//	if( (entry&1) == 0 || (get_access_bit(entry) == 0)){
-	if( (entry&1) == 0 ){
-		return 0; //invalid
-	}
-	else
-		return 1; //valid
-}
-int pte_entry_valid(unsigned long entry)
-{
-	return entry_present(entry);
-}
-
-extern "C"{
-int init_hypercall(int recent_cr3_size, int fd){
-	int ret, i;
-
-	//Init
-	privcmd_hypercall_t hyper1 = { 
-		__HYPERVISOR_vt_op, 
-		{ 1, domID, recent_cr3_size, 0, 0}
-	};
-	ret = ioctl(fd, IOCTL_PRIVCMD_HYPERCALL, &hyper1);
-
-	return ret;
-}
-
-void get_cr3_hypercall(unsigned long *cr3_list, int &list_size, int fd){
-	int ret, i;
-
-	for(i=0; i<list_size; i++)
-		cr3_list[i] = 0;
-
-	//Get cr3 from Hypervisor
-	privcmd_hypercall_t hyper1 = { 
-		__HYPERVISOR_vt_op, 
-		{ 3, domID, 0, (__u64)cr3_list, 0}
-	};
-	ret = ioctl(fd, IOCTL_PRIVCMD_HYPERCALL, &hyper1);
-
-	list_size = cr3_list[0];
-	for(i=1; i<=list_size; i++){
-		cr3_list[i-1] = cr3_list[i];
-	}
-	cr3_list[i+1] = 0;
-}
-}
-
-/*void total_valid_calculate(unsigned long frame, unsigned long &total_value){
-	if(system_map_total_valid.count(frame) == 0){
-		system_map_total_valid[frame] = 1;
-		total_value++;
-	}
-}*/
+#include "define.h"
 
 void* map_page(unsigned long pa_base, int level, struct guest_pagetable_walk *gw)
 {	
@@ -274,10 +48,13 @@ unsigned long check_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_si
 			struct hash_table tmp;
 			tmp.cr3 = cr3;
 			tmp.change_page = 0;
+			tmp.start_round = round;
+			tmp.end_round = round;
 			list.insert(DATAMAP::value_type(cr3, tmp));
 		}
 		else{
 			struct hash_table &h = list[cr3];
+			h.end_round = round;
 			h.check = 1;
 			total_change_page += h.change_page;	
 		}
@@ -349,13 +126,11 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 				(table->change_page)++;
 			}
 			ret = 1;
-			(table->non2s)++;	
 		}
 		//swap to non-swap bit
 		else if(val==0 && valid_bit==1){
 			//			fprintf(stderr, "bit:%x s2non va:%lx\n", val_ref, gw->va);
 			add_change_number(val_ref);			
-			(table->s2non)++;
 			ret = 0;		
 		}
 
@@ -380,13 +155,13 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 	unsigned int hugepage_counter = 0;
 
 
-	table->s2non = table->non2s = table->count = table->change_page = table->activity_page[0] = table->activity_page[1] =
+	table->check = table->change_page = table->activity_page[0] = table->activity_page[1] =
 		table->total_valid_pages = 0;
 	l1num = 512;
 	l2num = 512;
 	l3num = 512;
 	l4num = 512;
-//	l4num = 511;
+	//	l4num = 511;
 	//l4num = 1;
 	memset(&gw, 0, sizeof(struct guest_pagetable_walk));	
 
@@ -458,7 +233,7 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 						gw.l1e = l1p[l1offset];
 						gw.va = get_vaddr(l1offset, l2offset, l3offset, l4offset);
 
-						/*Even gw.l1e==0 also continue*/
+						/*Even gw.l1e==0 also continue or there will some problem with share memory*/
 						if( gw.va == 0 )
 							continue;
 
@@ -471,8 +246,8 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 						else
 						{
 							int ret;
-//       						total_valid_calculate( (((gw.l1e)>>12)&ADDR_MASK ), table->total_valid_pages);
-                            (table->total_valid_pages)++;  						
+							//       						total_valid_calculate( (((gw.l1e)>>12)&ADDR_MASK ), table->total_valid_pages);
+							(table->total_valid_pages)++;  						
 							ret = compare_swap(table, &gw, l1offset, 1, 0);
 							total++;
 						}
@@ -500,15 +275,14 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 			munmap(l3p, XC_PAGE_SIZE);
 		if(l4p != NULL)
 			munmap(l4p, XC_PAGE_SIZE);		
-        goto BUSERR;
+		goto BUSERR;
 	}
 
 BUSERR: 
 
-//	if(table->non2s != 0)
-//		printf("###All_pages:%lu swap_page:%lu non2s:%lu s2non:%lu total_page: %lu hugepage_counter:%u cr3:%lx###\n", 
-//				total, count, table->non2s, table->s2non, table->total_valid_pages, hugepage_counter, dtb);
-	table->count = count;
+	//	if(table->non2s != 0)
+	//		printf("###All_pages:%lu swap_page:%lu non2s:%lu s2non:%lu total_page: %lu hugepage_counter:%u cr3:%lx###\n", 
+	//				total, count, table->non2s, table->s2non, table->total_valid_pages, hugepage_counter, dtb);
 	return count;
 }
 
@@ -522,7 +296,6 @@ int walk_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size,  unsign
 		//If there are no struct for this cr3, map will automated assigned new struct
 		struct hash_table &h = list[cr3];
 		h.cr3 = cr3;
-		h.check = 0;
 		h.round = round;
 		if(cr3 == 0x187000)
 			continue;
@@ -557,20 +330,27 @@ int retrieve_list(DATAMAP &list, unsigned int round)
 
 	return retrieve_cr3_number;
 }
+
 unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 {
 	DATAMAP::iterator it = list.begin();
 	unsigned long check_cr3_num = 0;
+	unsigned long total_change_times = 0;
 	SYSTEM_MAP *system_map;
+	map<unsigned long, struct page_data>page_owner;
+	Sampled_data sample_data;
 
+	sample_result.insert(pair<unsigned int, Sampled_data>(round, sample_data));
 
 	while(it != list.end())
 	{
+		unsigned long change_times;
 		struct hash_table &h = it->second;
 		unsigned long cr3 = it->first;
 		check_cr3_num++;
 
 		if(h.check == 1){
+			sample_result[round].add_process(cr3);
 			HASHMAP::iterator hashIt = h.h.begin();
 			while(hashIt != h.h.end()){
 				unsigned long paddr;
@@ -587,14 +367,24 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 					paddr = get_paddr(hashIt->second.paddr);
 				}
 
-
-				if(  (get_change_number(val_ref) >= CHANGE_LIMIT && valid_bit == 0) || valid_bit == 1 ){
-//				if(  ( valid_bit == 0 ){
+				change_times = get_change_number(val_ref);
+				if(  (change_times >= CHANGE_LIMIT && valid_bit == 0) || valid_bit == 1 ){
+					//			if(  ( valid_bit == 0 ){
 					/*check if paddr already stored in system_map*/
 					if(system_map->count(paddr) > 0){
+						if(page_owner[paddr].max_change_times < change_times){
+							page_owner[paddr].max_change_times = change_times;
+						}
+						unsigned long owner = page_owner[paddr].owner;
 						(system_map->at(paddr))++;
+						sample_result[round].add_share(owner, cr3);
 					}
 					else{
+						struct page_data page_data;
+						page_data.owner = cr3;
+						page_data.max_change_times = change_times;
+
+						page_owner.insert(pair<unsigned long, struct page_data>( paddr, page_data));
 						system_map->insert(pair<unsigned long, byte>(paddr, 1));
 						if(huge_bit == 0){
 							(h.activity_page)[valid_bit]++;
@@ -602,21 +392,21 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 						else{
 							(h.activity_page)[valid_bit] += 512;
 						}
+						total_change_times += change_times;
 					}
 				}
 				hashIt++;
+				}
+
+				result[0] += h.activity_page[0];
+				result[1] += h.activity_page[1];
+				result[2] += h.total_valid_pages;
 			}
-
-			result[0] += h.activity_page[0];
-			result[1] += h.activity_page[1];
-			result[2] += h.total_valid_pages;
+			it++;
 		}
+		sample_result[round].set_value( result[0], total_change_times);
 
-
-		h.check = 0;
-		it++;
+		page_owner.clear();
+		return check_cr3_num;
 	}
 
-
-	return check_cr3_num;
-}
