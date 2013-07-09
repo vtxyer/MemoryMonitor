@@ -31,11 +31,14 @@ typedef map<unsigned long, unsigned long> SYSTEM_MAP;
 
 struct mapData
 {
-	byte present_times;
-	
 	/*
-	 * valid_bit==1 -> [63:28]:paddr, [0:0]:huge_bit
-	 * valid_bit==0 -> [63:28]:paddr, [27:1]:swap_paddr, [0:0]huge_bit
+	 * bit 0 -> present bit, bit 1~7 -> change times
+	 * */
+	byte present_times;
+
+	/*
+	 * valid_bit==1 -> [63:63]:bool for change_times add, [62:28]:paddr, [0:0]:huge_bit
+	 * valid_bit==0 -> [63:63]:bool for change_times add, [62:28]:paddr, [27:1]:swap_paddr, [0:0]huge_bit
 	 * */
 	unsigned long paddr;
 };
@@ -45,7 +48,6 @@ typedef map<unsigned long, mapData> HASHMAP;
 struct hash_table
 {
 	map<unsigned long, mapData> h; //bit 0=>valid_bit, 1~8 => counter
-	map<unsigned long, mapData> non_verified_page;
 	unsigned long cr3;
 	unsigned long change_page, total_valid_pages;
 	unsigned long activity_page[2];//0->invalid, 1->valid
@@ -120,7 +122,7 @@ extern sigjmp_buf sigbuf;
 /* BitManage */
 //1~7 bits represent change number
 int add_change_number(byte &value);
-byte get_change_number(byte value);
+unsigned long get_change_number(byte value);
 unsigned long get_bit(unsigned long entry, int num, int position);
 void clear_bit(unsigned long &addr, int start, int end);
 int page_size_flag (uint64_t entry);
@@ -135,7 +137,8 @@ void save_huge_bit(unsigned long &addr, unsigned long val);
 unsigned long get_vaddr(unsigned long l1offset, unsigned long l2offset, unsigned long l3offset, unsigned long l4offset);
 int entry_valid(unsigned long entry);
 int pte_entry_valid(unsigned long entry);
-
+void set_change_bit(unsigned long &entry, bool val);
+bool change_bit_set(unsigned long entry);
 
 
 

@@ -100,20 +100,22 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 			save_swap_paddr(mapVal.paddr, paddr);
 		}
 		save_huge_bit(mapVal.paddr, huge_bit);
+		set_change_bit(mapVal.paddr, true);
 
 		table->h.insert(map<unsigned long, mapData>::value_type(vkey, mapVal));
 		ret = 0;
 	}
 	else{
 		char &val_ref = table->h[vkey].present_times;	
+		unsigned long &paddr_val = table->h[vkey].paddr;
 
 		if(valid_bit == 1){
-			save_paddr(table->h[vkey].paddr, paddr);
+			save_paddr(paddr_val, paddr);
 		}
 		else{
-			save_swap_paddr(table->h[vkey].paddr, paddr);
+			save_swap_paddr(paddr_val, paddr);
 		}
-		save_huge_bit(table->h[vkey].paddr, huge_bit);
+		save_huge_bit(paddr_val, huge_bit);
 
 
 		val = val_ref&1;
@@ -136,7 +138,11 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 
 		if(val!=valid_bit){
 			val_ref &= 0xfe;
-			val_ref |= valid_bit; 
+			val_ref |= valid_bit;
+			set_change_bit(paddr_val, true);
+		}
+		else{
+			set_change_bit(paddr_val, false);
 		}
 	}
 	return ret;
@@ -349,64 +355,76 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 		unsigned long cr3 = it->first;
 		check_cr3_num++;
 
-		if(h.check == 1){
-			sample_result[round].add_process(cr3);
-			HASHMAP::iterator hashIt = h.h.begin();
-			while(hashIt != h.h.end()){
-				unsigned long paddr;
-				byte valid_bit = (hashIt->second.present_times) & 1;
-				byte val_ref = hashIt->second.present_times;
-				char huge_bit = get_huge_bit(hashIt->second.paddr);
+		sample_result[round].add_process(cr3);
+		HASHMAP::iterator hashIt = h.h.begin();
+		(h.activity_page)[0] = (h.activity_page)[1] = (h.activity_page)[2] = 0;
+		while(hashIt != h.h.end()){
+			unsigned long paddr;
+			byte valid_bit = (hashIt->second.present_times) & 1;
+			byte val_ref = hashIt->second.present_times;
+			char huge_bit = get_huge_bit(hashIt->second.paddr);
 
-				if(valid_bit == 0){
-					system_map = &system_map_swap;
-					paddr = get_swap_id(hashIt->second.paddr);
+
+			if(valid_bit == 0){
+				system_map = &system_map_swap;
+				paddr = get_swap_id(hashIt->second.paddr);
+			}
+			else{
+				system_map = &system_map_wks;
+				paddr = get_paddr(hashIt->second.paddr);
+			}
+			change_times = get_change_number(val_ref);
+	
+
+			if( h.check == 0 && change_bit_set(hashIt->second.paddr) ){
+				if(change_times >= 1){
+					change_times -= 1;
 				}
 				else{
-					system_map = &system_map_wks;
-					paddr = get_paddr(hashIt->second.paddr);
+					hashIt++;
+					continue;
 				}
+			}
 
-				change_times = get_change_number(val_ref);
-				if(  (change_times >= CHANGE_LIMIT && valid_bit == 0) || valid_bit == 1 ){
-					//			if(  ( valid_bit == 0 ){
-					/*check if paddr already stored in system_map*/
-					if(system_map->count(paddr) > 0){
-						if(page_owner[paddr].max_change_times < change_times){
-							page_owner[paddr].max_change_times = change_times;
-						}
-						unsigned long owner = page_owner[paddr].owner;
-						(system_map->at(paddr))++;
-						sample_result[round].add_share(owner, cr3);
+			if(  (change_times >= CHANGE_LIMIT && valid_bit == 0) || valid_bit == 1 ){
+				//			if(  ( valid_bit == 0 ){
+				/*check if paddr already stored in system_map*/
+				if(system_map->count(paddr) > 0){
+					if(page_owner[paddr].max_change_times < change_times){
+						page_owner[paddr].max_change_times = change_times;
+					}
+					unsigned long owner = page_owner[paddr].owner;
+					(system_map->at(paddr))++;
+					sample_result[round].add_share(owner, cr3);
+				}
+				else{
+					struct page_data page_data;
+					page_data.owner = cr3;
+					page_data.max_change_times = change_times;
+
+					page_owner.insert(pair<unsigned long, struct page_data>( paddr, page_data));
+					system_map->insert(pair<unsigned long, byte>(paddr, 1));
+					if(huge_bit == 0){
+						(h.activity_page)[valid_bit]++;
 					}
 					else{
-						struct page_data page_data;
-						page_data.owner = cr3;
-						page_data.max_change_times = change_times;
-
-						page_owner.insert(pair<unsigned long, struct page_data>( paddr, page_data));
-						system_map->insert(pair<unsigned long, byte>(paddr, 1));
-						if(huge_bit == 0){
-							(h.activity_page)[valid_bit]++;
-						}
-						else{
-							(h.activity_page)[valid_bit] += 512;
-						}
-						total_change_times += change_times;
+						(h.activity_page)[valid_bit] += 512;
 					}
+					total_change_times += change_times;
 				}
-				hashIt++;
-				}
-
-				result[0] += h.activity_page[0];
-				result[1] += h.activity_page[1];
-				result[2] += h.total_valid_pages;
 			}
-			it++;
-		}
-		sample_result[round].set_value( result[0], total_change_times);
 
-		page_owner.clear();
-		return check_cr3_num;
+			hashIt++;
+		}//end walk each page for CR3
+
+		result[0] += h.activity_page[0];
+		result[1] += h.activity_page[1];
+		result[2] += h.total_valid_pages;
+		it++;
 	}
+	sample_result[round].set_value( result[0], total_change_times);
+
+	page_owner.clear();
+	return check_cr3_num;
+}
 
