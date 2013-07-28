@@ -4,5 +4,5 @@ TARGET_ARCH=ppc
 TARGET_WORDS_BIGENDIAN=yes
 CONFIG_USER_ONLY=yes
 CONFIG_LINUX_USER=yes
-TARGET_XML_FILES= /XenSource/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/power-core.xml /XenSource/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/power-fpu.xml /XenSource/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/power-altivec.xml /XenSource/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/power-spe.xml
+TARGET_XML_FILES= /home/Xen/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/power-core.xml /home/Xen/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/power-fpu.xml /home/Xen/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/power-altivec.xml /home/Xen/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/power-spe.xml
 CONFIG_SOFTFLOAT=yes

@@ -5,7 +5,7 @@
  * Copyright (C) 2000 - 2009 Intel Corporation
  * Supports ACPI Specification Revision 3.0a
  * 
- * Compilation of "ssdt_pm.asl" - Sun Jun  2 16:10:22 2013
+ * Compilation of "ssdt_pm.asl" - Mon Jul 22 13:57:48 2013
  * 
  * C source code output
  *

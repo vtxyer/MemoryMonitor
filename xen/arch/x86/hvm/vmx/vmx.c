@@ -55,6 +55,12 @@
 #include <asm/debugger.h>
 #include <asm/apic.h>
 
+
+/*<VT> add*/
+#define GUEST_PAGING_LEVELS 4
+#include <asm/guest_pt.h>
+
+
 enum handler_return { HNDL_done, HNDL_unhandled, HNDL_exception_raised };
 
 static void vmx_ctxt_switch_from(struct vcpu *v);
@@ -2706,3 +2712,141 @@ asmlinkage void vmx_vmenter_helper(void)
  * indent-tabs-mode: nil
  * End:
  */
+
+
+
+/*<VT> add*/
+unsigned long va_to_mfn(struct vcpu *v, unsigned long cr3, unsigned long gva)
+{
+	struct p2m_domain *p2m;
+	unsigned long gfn, mfn;
+//	unsigned long ret;
+	uint32_t pfec[1];
+	p2m_access_t a;
+	p2m_type_t pt;
+	p2m_type_t p2mt;
+	int missing;
+	walk_t gw;
+	mfn_t top_mfn;
+	void *top_map;
+
+	pfec[0] = 0;
+	p2m = p2m_get_hostp2m(v->domain); 
+
+
+
+    top_mfn = gfn_to_mfn_unshare(p2m, cr3 >> PAGE_SHIFT, &p2mt, 0);
+	top_map = map_domain_page(mfn_x(top_mfn));
+
+	missing = guest_walk_tables(v, p2m, gva, &gw, pfec[0], top_mfn, top_map);
+
+	if(missing != 0 ){
+		printk("<VT> cr3 %lx gva %lx get gfn error\n", cr3, gva);
+		return INVALID_MFN;
+	}
+	gfn = guest_l1e_get_gfn(gw.l1e);
+	mfn = p2m->get_entry(p2m, gfn, &pt, &a, 0);
+
+	if(mfn==INVALID_MFN){
+		printk("<VT> get error mfn\n");
+		return INVALID_MFN;
+	}
+	unmap_domain_page(top_map);
+
+	return mfn;
+}
+int set_extra_gfn_to_ept(struct p2m_domain *p2m, unsigned long gfn, unsigned long mfn)
+{
+	int ret;
+	ret = p2m->set_entry(p2m, gfn, mfn, 0, 0, 3);
+	if(ret == 0){
+		printk("<VT> bts set_entry error\n");
+		return -1;
+	}
+	return 0;
+}
+
+
+int do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *buf2)
+{
+    struct domain* d = get_domain_by_id(domID);
+    struct p2m_domain *p2m;
+    int i;
+	unsigned long *longBuff;
+
+    struct domain* host_d;
+	unsigned long mfn, extra_gfn;
+
+	longBuff = (unsigned long *)buf1;
+
+	p2m = p2m_get_hostp2m(d);
+
+    if(d==NULL)
+        return -1;
+
+    switch(op){
+        case 1:
+			/*Init monitor environment*/
+			if(d->recent_cr3_size != 0){
+				printk("<VT> already start sampling\n");
+				return 1;
+			}
+			d->recent_cr3_size = arg;
+			d->recent_cr3 = xmalloc_array(unsigned long, arg);
+			if(d->recent_cr3 == NULL){
+				printk("<VT> alloc recent_cr3 error\n");
+				return -1;
+			}
+			d->sample_flag = 1;
+			break;
+		case 2:
+			/*stop sampling*/
+            spin_lock(&(d->recent_cr3_lock));
+			d->sample_flag = 0;
+			d->recent_cr3_size = 0;
+			if(d->recent_cr3 != NULL)
+				xfree(d->recent_cr3);
+			d->recent_cr3 = NULL;
+            spin_unlock(&(d->recent_cr3_lock));
+			break;
+		case 3:
+            /*return cr3 back to Dom0*/
+            longBuff[0] = 0;
+            spin_lock(&(d->recent_cr3_lock));
+            for(i=0; i<d->recent_cr3_size; i++){
+                if(d->recent_cr3[i] != 0){
+                    longBuff[0]++;
+                    longBuff[longBuff[0]] = d->recent_cr3[i];
+                    d->recent_cr3[i] = 0;
+                }
+            }
+            spin_unlock(&(d->recent_cr3_lock));
+            break;
+		case 4:
+			/*lock assigned page*/
+			p2m_change_type(p2m, arg, p2m_ram_rw, p2m_ram_pte_lock);
+			break;
+		case 5:
+			/*set extra gfn to ept table
+			 *
+			 * domID -> guest_domID
+			 * arg -> host_free_page_va
+			 * longBuff[0] -> host_domID
+			 * longBuff[1] -> host cr3
+			 *
+			 * */
+			host_d = get_domain_by_id(longBuff[0]);
+			mfn = va_to_mfn(host_d->vcpu[0], longBuff[1], arg);
+			if(mfn == INVALID_MFN){
+				printk("<VT>host free page va to mfn error\n");
+				return -1;
+			}
+			extra_gfn = (d->max_pages) + 20;
+			set_extra_gfn_to_ept(p2m, extra_gfn, mfn);
+			printk("<VT>map domID:%d extra_gfn:%lx to mfn:%lx\n",
+					domID, extra_gfn, mfn);		
+			break;
+
+	}
+    return 0;
+}

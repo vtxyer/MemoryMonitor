@@ -358,6 +358,7 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 		sample_result[round].add_process(cr3);
 		HASHMAP::iterator hashIt = h.h.begin();
 		(h.activity_page)[0] = (h.activity_page)[1] = (h.activity_page)[2] = 0;
+if(h.check == 1){	
 		while(hashIt != h.h.end()){
 			unsigned long paddr;
 			byte valid_bit = (hashIt->second.present_times) & 1;
@@ -416,6 +417,7 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 
 			hashIt++;
 		}//end walk each page for CR3
+}
 
 		result[0] += h.activity_page[0];
 		result[1] += h.activity_page[1];

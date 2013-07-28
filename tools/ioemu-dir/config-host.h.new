@@ -9,7 +9,6 @@
 #define AUDIO_DRIVERS \
     &oss_audio_driver, \
 
-#define CONFIG_VNC_TLS 1
 #define QEMU_VERSION "0.10.2"
 #define CONFIG_SDL 1
 #define CONFIG_OPENGL 1

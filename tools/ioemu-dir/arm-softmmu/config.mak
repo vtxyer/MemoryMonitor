@@ -2,5 +2,5 @@
 include ../config-host.mak
 TARGET_ARCH=arm
 CONFIG_SOFTMMU=yes
-TARGET_XML_FILES= /XenSource/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/arm-core.xml /XenSource/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/arm-vfp.xml /XenSource/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/arm-vfp3.xml /XenSource/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/arm-neon.xml
+TARGET_XML_FILES= /home/Xen/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/arm-core.xml /home/Xen/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/arm-vfp.xml /home/Xen/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/arm-vfp3.xml /home/Xen/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/arm-neon.xml
 CONFIG_SOFTFLOAT=yes

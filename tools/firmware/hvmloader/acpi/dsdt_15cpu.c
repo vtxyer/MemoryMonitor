@@ -5,7 +5,7 @@
  * Copyright (C) 2000 - 2009 Intel Corporation
  * Supports ACPI Specification Revision 3.0a
  * 
- * Compilation of "dsdt_15cpu.asl" - Sun Jun  2 16:10:23 2013
+ * Compilation of "dsdt_15cpu.asl" - Mon Jul 22 13:57:48 2013
  * 
  * C source code output
  *

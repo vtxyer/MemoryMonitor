@@ -2,7 +2,7 @@ shm.o: shm.c /usr/include/assert.h /usr/include/features.h \
  /usr/include/sys/cdefs.h /usr/include/bits/wordsize.h \
  /usr/include/gnu/stubs.h /usr/include/gnu/stubs-64.h \
  /usr/include/stdlib.h \
- /usr/lib/gcc/x86_64-redhat-linux/4.4.7/include/stddef.h \
+ /usr/lib/gcc/x86_64-redhat-linux/4.4.6/include/stddef.h \
  /usr/include/bits/waitflags.h /usr/include/bits/waitstatus.h \
  /usr/include/endian.h /usr/include/bits/endian.h \
  /usr/include/bits/byteswap.h /usr/include/xlocale.h \
@@ -19,9 +19,9 @@ shm.o: shm.c /usr/include/assert.h /usr/include/features.h \
  /usr/include/bits/confname.h /usr/include/getopt.h \
  /usr/include/sys/mman.h /usr/include/bits/mman.h /usr/include/sys/stat.h \
  memshr-priv.h /usr/include/syslog.h /usr/include/sys/syslog.h \
- /usr/lib/gcc/x86_64-redhat-linux/4.4.7/include/stdarg.h \
+ /usr/lib/gcc/x86_64-redhat-linux/4.4.6/include/stdarg.h \
  /usr/include/bits/syslog-path.h \
- /XenSource/MemoryMonitor/tools/memshr/../../tools/libxc/xenctrl.h \
+ /home/Xen/MemoryMonitor/tools/memshr/../../tools/libxc/xenctrl.h \
  /usr/include/stdint.h /usr/include/bits/wchar.h /usr/include/stdio.h \
  /usr/include/libio.h /usr/include/_G_config.h /usr/include/wchar.h \
  /usr/include/bits/stdio_lim.h /usr/include/bits/sys_errlist.h \
@@ -39,7 +39,7 @@ shm.o: shm.c /usr/include/assert.h /usr/include/features.h \
  ../include/xen/xsm/acm.h ../include/xen/xsm/../xen.h \
  ../include/xen/xsm/acm_ops.h ../include/xen/xsm/acm.h \
  ../include/xen/xsm/flask_op.h ../include/xen/tmem.h \
- /XenSource/MemoryMonitor/tools/memshr/../../tools/libxc/xentoollog.h \
+ /home/Xen/MemoryMonitor/tools/memshr/../../tools/libxc/xentoollog.h \
  ../include/xen/foreign/x86_32.h ../include/xen/foreign/x86_64.h \
  ../include/xen/arch-x86/xen-mca.h memshr.h bidir-hash.h bidir-namedefs.h \
  shm.h /usr/include/pthread.h /usr/include/sched.h \

@@ -1,8 +1,8 @@
-string.o: string.c /XenSource/MemoryMonitor/xen/include/xen/types.h \
- /XenSource/MemoryMonitor/xen/include/xen/config.h \
- /XenSource/MemoryMonitor/xen/include/xen/compiler.h \
- /XenSource/MemoryMonitor/xen/include/asm/config.h \
- /XenSource/MemoryMonitor/xen/include/asm/types.h \
- /XenSource/MemoryMonitor/xen/include/xen/string.h \
- /XenSource/MemoryMonitor/xen/include/asm/string.h \
- /XenSource/MemoryMonitor/xen/include/xen/ctype.h
+string.o: string.c /home/Xen/MemoryMonitor/xen/include/xen/types.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/config.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/compiler.h \
+ /home/Xen/MemoryMonitor/xen/include/asm/config.h \
+ /home/Xen/MemoryMonitor/xen/include/asm/types.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/string.h \
+ /home/Xen/MemoryMonitor/xen/include/asm/string.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/ctype.h

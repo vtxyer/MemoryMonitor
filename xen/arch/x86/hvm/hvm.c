@@ -63,6 +63,8 @@
 #include <public/memory.h>
 #include <asm/mem_event.h>
 #include <public/mem_event.h>
+/*<VT> add*/
+#include <asm/hvm/emulate.h>
 
 bool_t __read_mostly hvm_enabled;
 
@@ -1134,24 +1136,46 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 	struct cpu_user_regs *regs = guest_cpu_user_regs();
 	unsigned long *pte_content, *data_content;
 	unsigned long data_page_paddr;
+	//For emulation
+	struct hvm_emulate_ctxt ctxt;
+	int rc;
 
     mfn = gfn_to_mfn_type_current(p2m, gfn, &p2mt, &p2ma, p2m_guest);
 
 	/*<VT> add*/
 	if(p2mt == p2m_ram_pte_lock){
-		cr3 = v->arch.hvm_vcpu.guest_cr[3]; 
-		pte_content = (unsigned long *)map_guest_paddr(v, p2m, cr3, gpa);
-		data_page_paddr = ((*pte_content)>>12);
-		data_page_paddr &= 0xfffffffff;  
-		data_content = (unsigned long *)map_guest_paddr(v, p2m, cr3, data_page_paddr);
+	
+		if(regs->eax == 1){
+			cr3 = v->arch.hvm_vcpu.guest_cr[3]; 
+//			pte_content = (unsigned long *)map_guest_paddr(v, p2m, cr3, gpa);
+//			data_page_paddr = ((*pte_content));
+			data_page_paddr = (regs->ecx) & 0xfffffffffffffff;
+			data_page_paddr &= 0xfffffffff000;
+			data_content = (unsigned long *)map_guest_paddr(v, p2m, cr3, data_page_paddr);
 		
-		printk("<VT> cr3:%lx gfn:%lx pte_content:%lx data_content:%lx eax:%lx edx:%lx\n",
-			cr3, gfn, *pte_content, *data_content, regs->eax, regs->edx
-		);
-		p2m_change_type(p2m, gfn, p2m_ram_pte_lock, p2m_ram_rw);
+/*			printk("<VT> cr3:%lx gpa:%lx offset:%lx pte_content:%lx data_content:%lx\n\
+	eax:%lx ebx:%lx ecx:%lx edx:%lx\n",
+				cr3, gpa, (gpa&0xfff), *pte_content, *data_content, 
+				regs->eax, regs->ebx, regs->ecx, regs->edx
+			);*/
 
-		unmap_domain_page((void *)pte_content);
-		unmap_domain_page((void *)data_content);
+			printk("<VT> cr3:%lx gpa:%lx offset:%lx data_content:%lx\n\
+eax:%lx ebx:%lx ecx:%lx edx:%lx\n",
+				cr3, gpa, (gpa&0xfff), *data_content, 
+				regs->eax, regs->ebx, regs->ecx, regs->edx
+			);
+
+
+//			p2m_change_type(p2m, gfn, p2m_ram_pte_lock, p2m_ram_rw);
+			unmap_domain_page((void *)pte_content);
+			unmap_domain_page((void *)data_content);
+
+		}
+//		printk("<VT> into ept violation\n");
+
+		//emulate
+		hvm_emulate_prepare(&ctxt, regs);
+		rc = hvm_emulate_one(&ctxt);
 	}
 
 

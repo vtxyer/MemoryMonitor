@@ -3,5 +3,5 @@ include ../config-host.mak
 TARGET_ARCH=m68k
 TARGET_WORDS_BIGENDIAN=yes
 CONFIG_SOFTMMU=yes
-TARGET_XML_FILES= /XenSource/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/cf-core.xml /XenSource/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/cf-fp.xml
+TARGET_XML_FILES= /home/Xen/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/cf-core.xml /home/Xen/MemoryMonitor/tools/ioemu-qemu-xen/gdb-xml/cf-fp.xml
 CONFIG_SOFTFLOAT=yes

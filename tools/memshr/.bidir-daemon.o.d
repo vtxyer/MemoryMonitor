@@ -5,7 +5,7 @@ bidir-daemon.o: bidir-daemon.c /usr/include/pthread.h \
  /usr/include/bits/endian.h /usr/include/bits/byteswap.h \
  /usr/include/sched.h /usr/include/bits/types.h \
  /usr/include/bits/typesizes.h \
- /usr/lib/gcc/x86_64-redhat-linux/4.4.7/include/stddef.h \
+ /usr/lib/gcc/x86_64-redhat-linux/4.4.6/include/stddef.h \
  /usr/include/time.h /usr/include/bits/sched.h /usr/include/bits/time.h \
  /usr/include/xlocale.h /usr/include/bits/pthreadtypes.h \
  /usr/include/bits/setjmp.h /usr/include/inttypes.h /usr/include/stdint.h \
@@ -13,9 +13,9 @@ bidir-daemon.o: bidir-daemon.c /usr/include/pthread.h \
  /usr/include/bits/posix_opt.h /usr/include/bits/environments.h \
  /usr/include/bits/confname.h /usr/include/getopt.h bidir-hash.h \
  memshr-priv.h /usr/include/syslog.h /usr/include/sys/syslog.h \
- /usr/lib/gcc/x86_64-redhat-linux/4.4.7/include/stdarg.h \
+ /usr/lib/gcc/x86_64-redhat-linux/4.4.6/include/stdarg.h \
  /usr/include/bits/syslog-path.h \
- /XenSource/MemoryMonitor/tools/memshr/../../tools/libxc/xenctrl.h \
+ /home/Xen/MemoryMonitor/tools/memshr/../../tools/libxc/xenctrl.h \
  /usr/include/stdio.h /usr/include/libio.h /usr/include/_G_config.h \
  /usr/include/wchar.h /usr/include/bits/stdio_lim.h \
  /usr/include/bits/sys_errlist.h /usr/include/bits/stdio.h \
@@ -33,6 +33,6 @@ bidir-daemon.o: bidir-daemon.c /usr/include/pthread.h \
  ../include/xen/xsm/../xen.h ../include/xen/xsm/acm_ops.h \
  ../include/xen/xsm/acm.h ../include/xen/xsm/flask_op.h \
  ../include/xen/tmem.h \
- /XenSource/MemoryMonitor/tools/memshr/../../tools/libxc/xentoollog.h \
+ /home/Xen/MemoryMonitor/tools/memshr/../../tools/libxc/xentoollog.h \
  ../include/xen/foreign/x86_32.h ../include/xen/foreign/x86_64.h \
  ../include/xen/arch-x86/xen-mca.h memshr.h bidir-namedefs.h

@@ -1,1 +1,1 @@
-/XenSource/MemoryMonitor/tools/ioemu-qemu-xen/tests/cris/.gdbinit
+/home/Xen/MemoryMonitor/tools/ioemu-qemu-xen/tests/cris/.gdbinit

@@ -1,1 +1,1 @@
-/XenSource/MemoryMonitor/tools/ioemu-qemu-xen/tests/cris/Makefile
+/home/Xen/MemoryMonitor/tools/ioemu-qemu-xen/tests/cris/Makefile

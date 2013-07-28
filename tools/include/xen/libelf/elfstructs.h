@@ -1,1 +1,1 @@
-/XenSource/MemoryMonitor/tools/include/../../xen/include/xen/elfstructs.h
+/home/Xen/MemoryMonitor/tools/include/../../xen/include/xen/elfstructs.h
