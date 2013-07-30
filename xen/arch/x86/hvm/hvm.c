@@ -1248,7 +1248,6 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 			}
 			else if(v->domain->extra_set_flag == 1){ /*store update pte value*/
 				printk("<VT> into update eip\n");
-//				v->domain->new_pte_val = regs->rcx;
 //				update_guest_eip();
 
 				/* Emulate X86 instruction or change to update rip??*/
