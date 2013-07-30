@@ -339,9 +339,9 @@ struct domain
 	unsigned long recent_cr3_size;
 	unsigned long *recent_cr3;
 	
-	/*for map page*/
-	unsigned long target_pte_gpa;
+	/*<VT> For map page*/
 	int extra_set_flag;
+	unsigned long target_pte_gpa;
 	unsigned long new_pte_val;	
 	unsigned long extra_gfn;	
 
