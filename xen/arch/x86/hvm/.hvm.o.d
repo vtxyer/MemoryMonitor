@@ -225,4 +225,5 @@ hvm.o: hvm.c /home/Xen/MemoryMonitor/xen/include/xen/config.h \
  /home/Xen/MemoryMonitor/xen/include/public/features.h \
  /home/Xen/MemoryMonitor/xen/include/public/memory.h \
  /home/Xen/MemoryMonitor/xen/include/asm/mem_event.h \
- /home/Xen/MemoryMonitor/xen/include/asm/hvm/emulate.h
+ /home/Xen/MemoryMonitor/xen/include/asm/hvm/emulate.h \
+ /home/Xen/MemoryMonitor/xen/include/asm/hvm/vmx/vmx.h

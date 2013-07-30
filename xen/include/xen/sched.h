@@ -338,6 +338,12 @@ struct domain
 	int sample_flag;
 	unsigned long recent_cr3_size;
 	unsigned long *recent_cr3;
+	
+	/*for map page*/
+	unsigned long target_pte_gpa;
+	int extra_set_flag;
+	unsigned long new_pte_val;	
+	unsigned long extra_gfn;	
 
 };
 

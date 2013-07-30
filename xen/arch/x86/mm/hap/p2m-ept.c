@@ -82,12 +82,17 @@ static void ept_p2m_type_to_flags(ept_entry_t *entry, p2m_type_t type, p2m_acces
         case p2m_mmio_dm:
         case p2m_populate_on_demand:
         case p2m_ram_paging_out:
-        case p2m_ram_paged:
         case p2m_ram_paging_in:
         case p2m_ram_paging_in_start:
         default:
             entry->r = entry->w = entry->x = 0;
             break;
+		/*<VT> change*/
+        case p2m_ram_paged:
+            entry->r = entry->x = 0;
+			entry->w = 0;
+			break;
+
         case p2m_ram_rw:
             entry->r = entry->w = entry->x = 1;
             break;
@@ -110,9 +115,10 @@ static void ept_p2m_type_to_flags(ept_entry_t *entry, p2m_type_t type, p2m_acces
             entry->r = 1;
             entry->w = entry->x = 0;
             break;
-		case p2m_ram_pte_lock:
+		case p2m_ram_pte_w_lock:
 			entry->w = 0;
-			entry->r = entry->x = 1;
+			entry->r = 1;
+			entry->x = 1;
 			break;
     }
 

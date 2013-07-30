@@ -1452,7 +1452,7 @@ static int get_instruction_length(void)
     return len;
 }
 
-static void update_guest_eip(void)
+void update_guest_eip(void)
 {
     struct cpu_user_regs *regs = guest_cpu_user_regs();
     unsigned long x;
@@ -2755,17 +2755,44 @@ unsigned long va_to_mfn(struct vcpu *v, unsigned long cr3, unsigned long gva)
 
 	return mfn;
 }
+void* map_guest_paddr(struct p2m_domain *p2m, unsigned long gpa)
+{
+	unsigned long mfn;
+	unsigned long mask;
+	p2m_access_t a;
+	p2m_type_t pt;
+
+	mask = 0xfff;
+	mfn = p2m->get_entry(p2m, gpa>>PAGE_SHIFT, &pt, &a, 0);
+	return map_domain_page(mfn_x(mfn)) + (gpa & mask);
+}
+
 int set_extra_gfn_to_ept(struct p2m_domain *p2m, unsigned long gfn, unsigned long mfn)
 {
 	int ret;
-	ret = p2m->set_entry(p2m, gfn, mfn, 0, 0, 3);
+	ret = p2m->set_entry(p2m, gfn, mfn, 0, p2m_ram_rw, p2m_access_rw);
 	if(ret == 0){
 		printk("<VT> bts set_entry error\n");
 		return -1;
 	}
 	return 0;
 }
+int restore_extra_gfn(struct domain *d, unsigned long gpa)
+{
+	struct p2m_domain *p2m;
+	unsigned long *src_pte_content;
+	
+	p2m = p2m_get_hostp2m(d);
+	d->extra_set_flag = 2;
 
+	src_pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);
+	if(src_pte_content == NULL){
+		printk("<VT> restore_extra_gfn map error\n");
+		return -1;
+	}
+	*src_pte_content = d->new_pte_val; 
+	return 0;
+}
 
 int do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *buf2)
 {
@@ -2776,6 +2803,10 @@ int do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *b
 
     struct domain* host_d;
 	unsigned long mfn, extra_gfn;
+
+	unsigned long *pte_content;
+	char *test_map;
+	int ret;
 
 	longBuff = (unsigned long *)buf1;
 
@@ -2823,8 +2854,11 @@ int do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *b
             spin_unlock(&(d->recent_cr3_lock));
             break;
 		case 4:
-			/*lock assigned page*/
-			p2m_change_type(p2m, arg, p2m_ram_rw, p2m_ram_pte_lock);
+			/*lock assigned gpa>>12 and set target_pte_gpa*/
+			d->target_pte_gpa = arg;
+			d->extra_set_flag = 0;
+			p2m_change_type(p2m, (arg>>12), p2m_ram_rw, p2m_ram_pte_w_lock);
+			printk("lock gfn:%lx and set target_pte_gpa to %lx\n", (arg>>12), d->target_pte_gpa);
 			break;
 		case 5:
 			/*set extra gfn to ept table
@@ -2842,9 +2876,35 @@ int do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *b
 				return -1;
 			}
 			extra_gfn = (d->max_pages) + 20;
-			set_extra_gfn_to_ept(p2m, extra_gfn, mfn);
-			printk("<VT>map domID:%d extra_gfn:%lx to mfn:%lx\n",
-					domID, extra_gfn, mfn);		
+			d->extra_gfn = extra_gfn;
+			ret = set_extra_gfn_to_ept(p2m, extra_gfn, mfn);
+			if(ret){
+				printk("<VT> set entry error\n");
+				return -1;
+			}
+			test_map = (char *)map_guest_paddr(p2m, (d->extra_gfn)<<12);
+			if(test_map == NULL){
+				printk("<VT> map error\n");
+				return -1;
+			}
+			printk("<VT>map domID:%d extra_gfn:%lx to mfn:%lx map_value:%c\n",
+					domID, extra_gfn, mfn, *test_map);		
+			break;
+		case 6:
+			/*restore extra gfn*/
+			domain_pause(d);
+			restore_extra_gfn(d, d->target_pte_gpa);
+			domain_unpause(d);
+			break;
+		case 7:
+			/*test*/
+			d->extra_gfn = arg;
+			break;
+		case 8:
+			/*test, change pte_content*/
+			pte_content = (unsigned long *)map_guest_paddr(p2m, arg);
+			*pte_content = longBuff[0];
+			printk("<VT> set pte_content to %lx\n", longBuff[0]);
 			break;
 
 	}

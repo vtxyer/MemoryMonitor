@@ -63,8 +63,10 @@
 #include <public/memory.h>
 #include <asm/mem_event.h>
 #include <public/mem_event.h>
+
 /*<VT> add*/
 #include <asm/hvm/emulate.h>
+#include <asm/hvm/vmx/vmx.h>
 
 bool_t __read_mostly hvm_enabled;
 
@@ -1105,7 +1107,7 @@ void hvm_triple_fault(void)
 
 
 
-void* map_guest_paddr(struct vcpu *u, struct p2m_domain *p2m, unsigned long cr3, unsigned long gpa)
+static void* map_guest_paddr(struct p2m_domain *p2m, unsigned long gpa)
 {
 	unsigned long mfn;
 	unsigned long mask;
@@ -1116,6 +1118,9 @@ void* map_guest_paddr(struct vcpu *u, struct p2m_domain *p2m, unsigned long cr3,
 	mfn = p2m->get_entry(p2m, gpa>>PAGE_SHIFT, &pt, &a, 0);
 	return map_domain_page(mfn_x(mfn)) + (gpa & mask);
 }
+
+
+
 
 bool_t hvm_hap_nested_page_fault(unsigned long gpa,
                                  bool_t gla_valid,
@@ -1134,49 +1139,182 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 
 	unsigned long cr3;
 	struct cpu_user_regs *regs = guest_cpu_user_regs();
-	unsigned long *pte_content, *data_content;
-	unsigned long data_page_paddr;
+	unsigned long *pte_content, *data_content, *new_data_content;
+	unsigned long data_page_paddr, new_data_page_paddr;
 	//For emulation
 	struct hvm_emulate_ctxt ctxt;
 	int rc;
 
+
+
     mfn = gfn_to_mfn_type_current(p2m, gfn, &p2mt, &p2ma, p2m_guest);
 
 	/*<VT> add*/
-	if(p2mt == p2m_ram_pte_lock){
-	
-		if(regs->eax == 1){
+	if(p2mt == p2m_ram_pte_w_lock){
+		p2m_change_type(p2m, gfn, p2m_ram_pte_w_lock, p2m_ram_rw);
+		if(gpa == (v->domain->target_pte_gpa) )
+		{
 			cr3 = v->arch.hvm_vcpu.guest_cr[3]; 
-//			pte_content = (unsigned long *)map_guest_paddr(v, p2m, cr3, gpa);
-//			data_page_paddr = ((*pte_content));
-			data_page_paddr = (regs->ecx) & 0xfffffffffffffff;
-			data_page_paddr &= 0xfffffffff000;
-			data_content = (unsigned long *)map_guest_paddr(v, p2m, cr3, data_page_paddr);
-		
-/*			printk("<VT> cr3:%lx gpa:%lx offset:%lx pte_content:%lx data_content:%lx\n\
-	eax:%lx ebx:%lx ecx:%lx edx:%lx\n",
-				cr3, gpa, (gpa&0xfff), *pte_content, *data_content, 
-				regs->eax, regs->ebx, regs->ecx, regs->edx
-			);*/
+//	 		pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);
+//			if(regs->rax == 1){
+//				data_page_paddr = (regs->rcx) & 0xfffffffffffffff;
+//			}
+//			else{
+//				data_page_paddr = ((*pte_content));
+//			}
+//			data_page_paddr &= 0xfffffffff000;
+//			data_content = (unsigned long *)map_guest_paddr(p2m, data_page_paddr);
+//			printk("<VT>before cr3:%lx gpa:%lx offset:%lx pte_content:%lx data_content:%lx\n rax:%lx rbx:%lx rcx:%lx rdx:%lx\n",
+//					cr3, gpa, (gpa&0xfff), *pte_content, *data_content, 
+//					regs->rax, regs->rbx, regs->rcx, regs->rdx);
+//			unmap_domain_page((void *)pte_content);
+//			unmap_domain_page((void *)data_content);
+//
+//			//emulate
+//			hvm_emulate_prepare(&ctxt, regs);
+//			rc = hvm_emulate_one(&ctxt);
+//
+//			if(regs->rax == 1){
+//				data_page_paddr = (regs->rcx) & 0xfffffffffffffff;
+//			}
+//			else{
+//				data_page_paddr = ((*pte_content));
+//			}
+//			data_page_paddr &= 0xfffffffff000;
+//			data_content = (unsigned long *)map_guest_paddr(p2m, data_page_paddr);
+//			printk("<VT>after cr3:%lx gpa:%lx offset:%lx pte_content:%lx data_content:%lx\n rax:%lx rbx:%lx rcx:%lx rdx:%lx\n",
+//					cr3, gpa, (gpa&0xfff), *pte_content, *data_content, 
+//					regs->rax, regs->rbx, regs->rcx, regs->rdx);
+//			unmap_domain_page((void *)pte_content);
+//			unmap_domain_page((void *)data_content);
+//
 
-			printk("<VT> cr3:%lx gpa:%lx offset:%lx data_content:%lx\n\
-eax:%lx ebx:%lx ecx:%lx edx:%lx\n",
-				cr3, gpa, (gpa&0xfff), *data_content, 
-				regs->eax, regs->ebx, regs->ecx, regs->edx
-			);
+//			if(regs->rax == (unsigned long)1){ /*PTE from 0->1, need to restore page*/
+			if(v->domain->extra_set_flag == 2){ /*PTE from 0->1, need to restore page*/
+//			if(regs->rax == (unsigned long)9999999999){ /*PTE from 0->1, need to restore page*/
+				printk("<VT> PTE 0->1\n"); 
+
+				v->domain->extra_set_flag = 0;
+				/* Emulate X86 instruction or change to update rip??*/
+				hvm_emulate_prepare(&ctxt, regs);
+				rc = hvm_emulate_one(&ctxt);
+
+				/*copy page content*/
+				data_page_paddr = ((v->domain->extra_gfn)<<12);
+				data_content = (unsigned long *)map_guest_paddr(p2m, data_page_paddr);
+
+				pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);
+				new_data_page_paddr = (*pte_content) & 0xfffffffff000;
+				new_data_content = (unsigned long *)map_guest_paddr(p2m, new_data_page_paddr);
+				memcpy(new_data_content, data_content, 4096);
+
+				unmap_domain_page((void *)data_content);
+				unmap_domain_page((void *)pte_content);
+				unmap_domain_page((void *)new_data_content);
 
 
-//			p2m_change_type(p2m, gfn, p2m_ram_pte_lock, p2m_ram_rw);
-			unmap_domain_page((void *)pte_content);
-			unmap_domain_page((void *)data_content);
+				printk("<VT> restore new page\n");
+				return 1;
+			}
+			else if(regs->rax == (unsigned long)0 && v->domain->extra_set_flag == 0){ /*PTE from 1->0, start to map new page*/
+				printk("<VT> PTE 1->0\n");
+				pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);
+				v->domain->extra_set_flag = 1;
+				v->domain->new_pte_val = regs->rcx;
 
+				/*copy page content*/
+				new_data_page_paddr = ((v->domain->extra_gfn)<<12);
+				new_data_content = (unsigned long *)map_guest_paddr(p2m, new_data_page_paddr);
+				if(new_data_content == NULL){
+					printk("<VT> PTE from 1->0 map error\n");
+				}
+				data_page_paddr = ((*pte_content) & 0xfffffffff000);
+				data_content = (unsigned long *)map_guest_paddr(p2m, data_page_paddr);
+				memcpy(new_data_content, data_content, 4096);			
+	
+				v->domain->new_pte_val = *pte_content;
+
+				/* Emulate X86 instruction or change to update rip??*/
+				hvm_emulate_prepare(&ctxt, regs);
+				rc = hvm_emulate_one(&ctxt);
+				hvm_emulate_writeback(&ctxt);
+
+//				*pte_content = 0x8000000000000000 + ((v->domain->extra_gfn)<<12) + 0x067;
+
+				printk("<VT> set new page ok pte_content:%lx\n", *pte_content);
+				unmap_domain_page((void *)new_data_content);
+				unmap_domain_page((void *)pte_content);
+				unmap_domain_page((void *)data_content);
+			}
+			else if(v->domain->extra_set_flag == 1){ /*store update pte value*/
+				printk("<VT> into update eip\n");
+//				v->domain->new_pte_val = regs->rcx;
+//				update_guest_eip();
+
+				/* Emulate X86 instruction or change to update rip??*/
+				hvm_emulate_prepare(&ctxt, regs);
+				rc = hvm_emulate_one(&ctxt);
+				hvm_emulate_writeback(&ctxt);
+
+				pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);
+				v->domain->new_pte_val = *pte_content;
+//				*pte_content = 0x8000000000000000 + ((v->domain->extra_gfn)<<12) + 0x067;
+//				*pte_content = v->domain->new_pte_val & 0xfffffffffffff000;
+//				*pte_content |= (*pte_content) | 0x0000000000000067;		
+
+				p2m_change_type(p2m, gfn, p2m_ram_rw, p2m_ram_paged);
+				printk("<VT> update eip ok pte_content:%lx cs:%x\n", *pte_content, (regs->cs)&3);
+				return 1;
+			}
+			else{
+				/* Emulate X86 instruction*/
+				printk("<VT> into normal emulate\n");
+				hvm_emulate_prepare(&ctxt, regs);
+				rc = hvm_emulate_one(&ctxt);
+				hvm_emulate_writeback(&ctxt);
+			}
 		}
-//		printk("<VT> into ept violation\n");
+		else{ /*not target*/
+			/* Emulate X86 instruction*/
+			hvm_emulate_prepare(&ctxt, regs);
+			rc = hvm_emulate_one(&ctxt);
+			hvm_emulate_writeback(&ctxt);
+		}
 
-		//emulate
-		hvm_emulate_prepare(&ctxt, regs);
-		rc = hvm_emulate_one(&ctxt);
+		p2m_change_type(p2m, gfn, p2m_ram_rw, p2m_ram_pte_w_lock);
+		return 1;
 	}
+
+	if(p2mt == p2m_ram_paged){
+		if(gpa == (v->domain->target_pte_gpa) )
+		{
+			printk("<VT> into read lock\n");
+
+			p2m_change_type(p2m, gfn, p2m_ram_paged, p2m_ram_rw);
+			/* Emulate X86 instruction*/
+			hvm_emulate_prepare(&ctxt, regs);
+			rc = hvm_emulate_one(&ctxt);
+			hvm_emulate_writeback(&ctxt);
+
+			pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);
+//			*pte_content = v->domain->new_pte_val & 0xfffffffffffff000;
+//			*pte_content |= (*pte_content) | 0x0000000000000067;			
+			*pte_content = 0x8000000000000000 + ((v->domain->extra_gfn)<<12) + 0x067;
+			p2m_change_type(p2m, gfn, p2m_ram_rw, p2m_ram_pte_w_lock);
+
+			printk("<VT> read lock ok set rc:%d pte_content:%lx cs:%x\n", 
+					rc, *pte_content, (regs->cs)&3);
+			p2m_change_type(p2m, gfn, p2m_ram_rw, p2m_ram_pte_w_lock);
+		}
+		else{
+			/* Emulate X86 instruction*/
+			hvm_emulate_prepare(&ctxt, regs);
+			rc = hvm_emulate_one(&ctxt);
+			hvm_emulate_writeback(&ctxt);
+		}
+		return 1;
+	}
+
 
 
     /* Check access permissions first, then handle faults */
