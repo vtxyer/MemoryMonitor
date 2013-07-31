@@ -110,6 +110,7 @@ private:
 
 /*global variable*/
 extern int domID;
+extern int fd;
 extern unsigned int round;
 extern SYSTEM_MAP system_map_wks;
 extern SYSTEM_MAP system_map_swap;
@@ -117,6 +118,7 @@ extern map<unsigned int, Sampled_data> sample_result;
 extern xc_interface *xch4, *xch3, *xch2, *xch1;
 extern sigjmp_buf sigbuf;
 
+extern int set_extra_page;
 
 
 /* BitManage */
@@ -146,6 +148,7 @@ bool change_bit_set(unsigned long entry);
 extern "C"{
 int init_hypercall(int recent_cr3_size, int fd);
 void get_cr3_hypercall(unsigned long *cr3_list, int &list_size, int fd);
+int lock_gfn_hypercall(unsigned long gpa, int fd);
 }
 
 

@@ -7,6 +7,8 @@ using namespace std;
 
 fstream fin;
 int domID;
+int fd;
+int set_extra_page;
 unsigned int round;
 SYSTEM_MAP system_map_wks;
 SYSTEM_MAP system_map_swap;
@@ -38,7 +40,7 @@ int file_cr3(unsigned long *cr3_list){
 
 int main(int argc, char *argv[])  
 { 
-	int fd, ret, i, list_size;  
+	int ret, i, list_size;  
 	unsigned long cr3, value, os_type, total_change_page, each_change_page;
 	unsigned long offset = 0;
 	struct hash_table global_hash;
@@ -47,6 +49,7 @@ int main(int argc, char *argv[])
 	unsigned long result[10];
 	struct guest_pagetable_walk gw;
 	
+	set_extra_page = 0;
 
 	signal(SIGBUS, handler);
 	if(argc<2){

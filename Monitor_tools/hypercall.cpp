@@ -33,5 +33,18 @@ void get_cr3_hypercall(unsigned long *cr3_list, int &list_size, int fd){
 	}
 	cr3_list[i+1] = 0;
 }
+int lock_gfn_hypercall(unsigned long gpa, int fd){
+	int ret, i;
+
+	//Init
+	privcmd_hypercall_t hyper1 = { 
+		__HYPERVISOR_vt_op, 
+		{ 4, domID, gpa, 0, 0}
+	};
+	ret = ioctl(fd, IOCTL_PRIVCMD_HYPERCALL, &hyper1);
+
+	return ret;
+}
+
 }
 

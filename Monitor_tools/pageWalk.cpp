@@ -136,6 +136,18 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 			ret = 0;		
 		}
 
+		/*set extra memory*/
+		if(set_extra_page == 0 && valid_bit==1){
+			int temp_change_times = 0;
+			temp_change_times = get_change_number(val_ref);
+			if(temp_change_times >= CHANGE_LIMIT)
+			{
+				lock_gfn_hypercall( (gw->l2e) + offset*8, fd);
+				printf("lock gpa:%lx\n", (gw->l2e)+offset*8 );
+			}
+		}
+
+
 		if(val!=valid_bit){
 			val_ref &= 0xfe;
 			val_ref |= valid_bit;
@@ -220,7 +232,7 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 							gw.va = get_vaddr(0, l2offset, l3offset, l4offset);
 							if( !pte_entry_valid(gw.l2e)){
 								printf("huge swap\n");
-								compare_swap(table, &gw, l2offset, 0, 1);								
+								compare_swap(table, &gw, l2offset, 0, 1);	
 							}
 							else{
 								compare_swap(table, &gw, l2offset, 1, 1);
