@@ -835,6 +835,7 @@ get_page_from_l1e(
         return -1;
     }
 
+	/*<VT> change*/
     if ( unlikely(real_pg_owner != pg_owner) )
     {
         /*
@@ -843,9 +844,17 @@ get_page_from_l1e(
          * dom0, until pvfb supports granted mappings. At that time this
          * minor hack can go away.
          */
-        if ( (real_pg_owner == NULL) || (pg_owner == l1e_owner) ||
-             !IS_PRIV_FOR(pg_owner, real_pg_owner) )
+//        if ( (real_pg_owner == NULL) || (pg_owner == l1e_owner) ||
+//             !IS_PRIV_FOR(pg_owner, real_pg_owner) )
+        if ( (real_pg_owner == NULL) || (pg_owner == l1e_owner) ){
+			if(real_pg_owner == NULL)
+				MEM_LOG("real_pg_owner == NULL\n");
+			else if(!IS_PRIV_FOR(pg_owner, real_pg_owner))
+				MEM_LOG("!IS_PRIV_FOR\n");
+			else if(pg_owner == l1e_owner)
+				MEM_LOG("pg_owner == l1e_owner\n");
             goto could_not_pin;
+		}
         pg_owner = real_pg_owner;
     }
 
@@ -855,8 +864,10 @@ get_page_from_l1e(
      * messing up the count of "real" writable mappings.) */
     write = (l1f & _PAGE_RW) &&
             ((l1e_owner == pg_owner) || !paging_mode_external(pg_owner));
-    if ( write && !get_page_type(page, PGT_writable_page) )
-        goto could_not_pin;
+    if ( write && !get_page_type(page, PGT_writable_page) ){
+		MEM_LOG("write && !get_page_type\n");
+    	goto could_not_pin;
+	}
 
     if ( pte_flags_to_cacheattr(l1f) !=
          ((page->count_info & PGC_cacheattr_mask) >> PGC_cacheattr_base) )

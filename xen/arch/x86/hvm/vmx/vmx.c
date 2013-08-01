@@ -2897,8 +2897,9 @@ int do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *b
 			domain_unpause(d);
 			break;
 		case 7:
-			/*test*/
-			d->extra_gfn = arg;
+			/*restore page type*/
+			p2m_change_type(p2m, arg, p2m_ram_pte_w_lock, p2m_ram_rw);
+			p2m_change_type(p2m, arg, p2m_ram_paged, p2m_ram_rw);
 			break;
 		case 8:
 			/*test, change pte_content*/

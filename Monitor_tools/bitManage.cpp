@@ -100,15 +100,13 @@ unsigned long get_vaddr(unsigned long l1offset, unsigned long l2offset, unsigned
 {
 	unsigned long va = 0, tmp;
 
-	tmp = 0;
-	tmp |= (l1offset<<12);
+	tmp = 0; tmp |= (l1offset<<12);
 	va |= tmp;
-	tmp = 0;
-	tmp |= (l2offset<<21);
-	va |= tmp;tmp = 0;
-	tmp |= (l3offset<<30);
-	va |= tmp;tmp = 0;
-	tmp |= (l4offset<<39);
+	tmp = 0; tmp |= (l2offset<<21);
+	va |= tmp;
+	tmp = 0; tmp |= (l3offset<<30);
+	va |= tmp;
+	tmp = 0; tmp |= (l4offset<<39);
 	va |= tmp;
 
 	return va;

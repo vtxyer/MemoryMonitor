@@ -17,7 +17,7 @@ extern "C"{
 #include <map>
 using namespace std;
 
-#define CHANGE_LIMIT 1
+#define CHANGE_LIMIT 2
 #define MAX_ROUND_INTERVAL 999
 #define ADDR_MASK 0x0000ffffffffffff
 #define RECENT_CR3_SIZE 50
@@ -66,6 +66,11 @@ struct guest_pagetable_walk
 	mfn_t l3mfn;                /* MFN that the level 3 entry was in */
 	mfn_t l2mfn;                /* MFN that the level 2 entry was in */
 	mfn_t l1mfn;                /* MFN that the level 1 entry was in */
+
+	unsigned long l4offset;            /* Guest's level 4 entry */
+	unsigned long l3offset;            /* Guest's level 3 entry */
+	unsigned long l2offset;            /* Guest's level 2 entry */
+	unsigned long l1offset;            /* Guest's level 1 entry (or fabrication) */
 };
 
 class Sampled_process_node

@@ -200,6 +200,15 @@ struct mem_event_domain
     int xen_port;
 };
 
+
+/*<VT> add*/
+struct extra_mem_node{
+	uint16_t total_lock_num;
+	unsigned long extra_map_mfn[512];
+	unsigned long update_pte_val[512];
+	uint16_t step_expireTime[512];
+};
+
 struct domain
 {
     domid_t          domain_id;
@@ -338,7 +347,7 @@ struct domain
 	int sample_flag;
 	unsigned long recent_cr3_size;
 	unsigned long *recent_cr3;
-	
+
 	/*<VT> For map page*/
 	int extra_set_flag;
 	unsigned long target_pte_gpa;

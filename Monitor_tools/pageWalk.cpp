@@ -132,18 +132,34 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 		//swap to non-swap bit
 		else if(val==0 && valid_bit==1){
 			//			fprintf(stderr, "bit:%x s2non va:%lx\n", val_ref, gw->va);
-			add_change_number(val_ref);			
+//			add_change_number(val_ref);			
 			ret = 0;		
 		}
 
 		/*set extra memory*/
-		if(set_extra_page == 0 && valid_bit==1){
+		if(set_extra_page == 0 && valid_bit==1 && vkey < 0x7f0cec172010){
 			int temp_change_times = 0;
+			int tmp;
 			temp_change_times = get_change_number(val_ref);
 			if(temp_change_times >= CHANGE_LIMIT)
 			{
-				lock_gfn_hypercall( (gw->l2e) + offset*8, fd);
-				printf("lock gpa:%lx\n", (gw->l2e)+offset*8 );
+/*				printf("Do you want to lock gfn:%lx? 1->yes, 2->no\n", vkey);
+				scanf("%d", &tmp);
+
+				if(tmp){
+					unsigned long gpa;
+					gpa = (unsigned long)(gw->l2e);
+					gpa >>= 12;
+					gpa <<= 12;
+					gpa += offset*8;
+					lock_gfn_hypercall( gpa, fd);
+					printf("lock gfn:%lx offset:%lx gpa:%lx vaddr:%lx\n", 
+							(gw->l2e)>>12, offset*8, gpa, vkey);				
+					printf("l1offset:%x, l2offset:%x l3offset:%x l4offset:%x\n",
+							gw->l1offset, gw->l2offset, gw->l3offset, gw->l4offset);
+					set_extra_page = 1;
+				}*/
+				printf("%lx times:%lu\n", vkey, temp_change_times);
 			}
 		}
 
@@ -193,6 +209,7 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 		for(l4offset=0; l4offset<l4num; l4offset++)
 		{
 			gw.l4e = l4p[l4offset];
+			gw.l4offset = l4offset;
 			if( !entry_valid(gw.l4e)){
 				continue;
 			}
@@ -203,6 +220,7 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 			for(l3offset=0; l3offset<l3num; l3offset++)
 			{
 				gw.l3e = l3p[l3offset];
+				gw.l3offset = l3offset;
 				if( !entry_valid(gw.l3e)){
 					continue;
 				}
@@ -218,6 +236,7 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 				for(l2offset=0; l2offset<l2num; l2offset++)
 				{
 					gw.l2e = l2p[l2offset];
+					gw.l2offset = l2offset;
 					if( !entry_valid(gw.l2e)){
 						continue;
 					}
@@ -249,6 +268,7 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 					for(l1offset=0; l1offset<l1num; l1offset++)
 					{
 						gw.l1e = l1p[l1offset];
+						gw.l1offset = l1offset;
 						gw.va = get_vaddr(l1offset, l2offset, l3offset, l4offset);
 
 						/*Even gw.l1e==0 also continue or there will some problem with share memory*/

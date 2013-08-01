@@ -1118,7 +1118,38 @@ static void* map_guest_paddr(struct p2m_domain *p2m, unsigned long gpa)
 	mfn = p2m->get_entry(p2m, gpa>>PAGE_SHIFT, &pt, &a, 0);
 	return map_domain_page(mfn_x(mfn)) + (gpa & mask);
 }
+int emulate_intr(struct hvm_emulate_ctxt ctxt, struct cpu_user_regs *regs)
+{
+    int rc;
 
+    hvm_emulate_prepare(&ctxt, regs);
+
+    rc = hvm_emulate_one(&ctxt);
+
+    switch ( rc )
+    {
+    case X86EMUL_UNHANDLEABLE:
+        gdprintk(XENLOG_WARNING,
+                 "<VT> emulation failed @ %04x:%lx: "
+                 "%02x %02x %02x %02x %02x %02x\n",
+                 hvmemul_get_seg_reg(x86_seg_cs, &ctxt)->sel,
+                 ctxt.insn_buf_eip,
+                 ctxt.insn_buf[0], ctxt.insn_buf[1],
+                 ctxt.insn_buf[2], ctxt.insn_buf[3],
+                 ctxt.insn_buf[4], ctxt.insn_buf[5]);
+        return 1;
+    case X86EMUL_EXCEPTION:
+        if ( ctxt.exn_pending )
+            hvm_inject_exception(ctxt.exn_vector, ctxt.exn_error_code, 0);
+        break;
+    default:
+        break;
+    }
+
+    hvm_emulate_writeback(&ctxt);
+
+    return 0;
+}
 
 
 int restore_page_value(struct vcpu *v, struct p2m_domain *p2m, struct cpu_user_regs *regs, unsigned long gpa)
@@ -1151,9 +1182,7 @@ int run_if_restore_procedure(struct vcpu *v, struct p2m_domain *p2m, struct cpu_
 	int rc;
 
 	/* Emulate X86 instruction or change to update rip??*/
-	hvm_emulate_prepare(&ctxt, regs);
-	rc = hvm_emulate_one(&ctxt);
-	hvm_emulate_writeback(&ctxt);
+	rc = emulate_intr(ctxt, regs);
 	if(rc){
 		printk("<VT>run_if_restore_procedure emulate error\n");
 		return -1;
@@ -1173,6 +1202,7 @@ int run_if_restore_procedure(struct vcpu *v, struct p2m_domain *p2m, struct cpu_
 	}
 	return 0;
 }
+
 
 bool_t hvm_hap_nested_page_fault(unsigned long gpa,
                                  bool_t gla_valid,
@@ -1202,9 +1232,10 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 
 	/*<VT> add*/
 	if(p2mt == p2m_ram_pte_w_lock){
+		printk("into lock\n");
 		p2m_change_type(p2m, gfn, p2m_ram_pte_w_lock, p2m_ram_rw);
 		if(gpa == (v->domain->target_pte_gpa) )
-		{
+		{			
 			cr3 = v->arch.hvm_vcpu.guest_cr[3]; 
 //			if(regs->rax == (unsigned long)1){ /*PTE from 0->1, need to restore page*/
 			if(v->domain->extra_set_flag == 2){ /*PTE from 0->1, need to restore page*/
@@ -1230,9 +1261,7 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 				v->domain->new_pte_val = *pte_content;
 
 				/* Emulate X86 instruction or change to update rip??*/
-				hvm_emulate_prepare(&ctxt, regs);
-				rc = hvm_emulate_one(&ctxt);
-				hvm_emulate_writeback(&ctxt);
+				emulate_intr(ctxt, regs);
 
 				printk("<VT> copy page OK\n");
 				unmap_domain_page((void *)new_data_content);
@@ -1243,9 +1272,7 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 				printk("<VT> into update eip\n");
 
 				/* Emulate X86 instruction or change to update rip??*/
-				hvm_emulate_prepare(&ctxt, regs);
-				rc = hvm_emulate_one(&ctxt);
-				hvm_emulate_writeback(&ctxt);
+				emulate_intr(ctxt, regs);
 
 				/*We cannot change pte value here, because linux kernel have one read for check data*/
 				pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);
@@ -1258,16 +1285,12 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 			else{
 				/* Emulate X86 instruction*/
 				printk("<VT> into normal emulate\n");
-				hvm_emulate_prepare(&ctxt, regs);
-				rc = hvm_emulate_one(&ctxt);
-				hvm_emulate_writeback(&ctxt);
+				emulate_intr(ctxt, regs);
 			}
 		}
 		else{ /*not target*/
 			/* Emulate X86 instruction */
-			hvm_emulate_prepare(&ctxt, regs);
-			rc = hvm_emulate_one(&ctxt);
-			hvm_emulate_writeback(&ctxt);
+			emulate_intr(ctxt, regs);
 		}
 
 		p2m_change_type(p2m, gfn, p2m_ram_rw, p2m_ram_pte_w_lock);
@@ -1281,9 +1304,7 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 			p2m_change_type(p2m, gfn, p2m_ram_paged, p2m_ram_rw);
 
 			/* Emulate X86 instruction*/
-			hvm_emulate_prepare(&ctxt, regs);
-			rc = hvm_emulate_one(&ctxt);
-			hvm_emulate_writeback(&ctxt);
+			rc = emulate_intr(ctxt, regs);
 			/* set extar page to PTE */
 			pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);
 			*pte_content = 0x8000000000000000 + ((v->domain->extra_gfn)<<12) + 0x067;
@@ -1295,9 +1316,7 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 		}
 		else{
 			/* Emulate X86 instruction*/
-			hvm_emulate_prepare(&ctxt, regs);
-			rc = hvm_emulate_one(&ctxt);
-			hvm_emulate_writeback(&ctxt);
+			emulate_intr(ctxt, regs);
 		}
 		return 1;
 	}
