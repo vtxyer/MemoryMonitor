@@ -59,6 +59,7 @@
 /*<VT> add*/
 #define GUEST_PAGING_LEVELS 4
 #include <asm/guest_pt.h>
+#include <xen/radix-tree.h>
 
 
 enum handler_return { HNDL_done, HNDL_unhandled, HNDL_exception_raised };
@@ -2716,15 +2717,67 @@ asmlinkage void vmx_vmenter_helper(void)
 
 
 /*<VT> add*/
+static int em_get_step(uint16_t node)
+{
+	int step;
+	step = 0;
+	step |= ((node)>>8);
+	return step;
+}
+static int em_get_expireTime(uint16_t node){
+	int expireTime;
+	expireTime = 0;
+	expireTime = (node) = 0xffff;
+	return expireTime;
+}
+static void em_set_step(uint16_t *node, int val){
+	int tmp;
+	tmp = em_get_step(*node);
+	tmp <<= 8;
+	tmp >>= 8;
+	val <<= 8;
+	val |= tmp;
+	*node = val;
+}
+static void em_set_expireTime(uint16_t *node, int val){
+	int tmp;
+	tmp = em_get_expireTime(*node);
+	tmp >>= 8;
+	tmp <<= 8;
+	val |= tmp;
+	*node = val;
+}
+
+
+
+static int add_mfn_to_list(struct domain *d, unsigned long mfn)
+{
+	struct em_free_list *new_node;
+
+	new_node = xmalloc_array(struct em_free_list, 1);
+	if(new_node == NULL){
+		printk("<VT> ERROR cannot alloc em_free_list node\n");
+		goto ERROR;
+	}
+	new_node->mfn = mfn;
+
+	spin_lock(&d->em_free_list_lock);
+	list_add_tail( &(new_node->list), &(d->em_free_list.list));
+	spin_unlock(&d->em_free_list_lock);
+	return 0;
+
+ERROR:
+	return -1;
+}
 unsigned long va_to_mfn(struct vcpu *v, unsigned long cr3, unsigned long gva)
 {
 	struct p2m_domain *p2m;
 	unsigned long gfn, mfn;
 //	unsigned long ret;
 	uint32_t pfec[1];
+	p2m_type_t p2mt;
 	p2m_access_t a;
 	p2m_type_t pt;
-	p2m_type_t p2mt;
 	int missing;
 	walk_t gw;
 	mfn_t top_mfn;
@@ -2733,9 +2786,7 @@ unsigned long va_to_mfn(struct vcpu *v, unsigned long cr3, unsigned long gva)
 	pfec[0] = 0;
 	p2m = p2m_get_hostp2m(v->domain); 
 
-
-
-    top_mfn = gfn_to_mfn_unshare(p2m, cr3 >> PAGE_SHIFT, &p2mt, 0);
+	top_mfn = gfn_to_mfn_unshare(p2m, cr3 >> PAGE_SHIFT, &p2mt, 0);
 	top_map = map_domain_page(mfn_x(top_mfn));
 
 	missing = guest_walk_tables(v, p2m, gva, &gw, pfec[0], top_mfn, top_map);
@@ -2767,30 +2818,145 @@ void* map_guest_paddr(struct p2m_domain *p2m, unsigned long gpa)
 	return map_domain_page(mfn_x(mfn)) + (gpa & mask);
 }
 
-int set_extra_gfn_to_ept(struct p2m_domain *p2m, unsigned long gfn, unsigned long mfn)
-{
-	int ret;
-	ret = p2m->set_entry(p2m, gfn, mfn, 0, p2m_ram_rw, p2m_access_rw);
-	if(ret == 0){
-		printk("<VT> bts set_entry error\n");
-		return -1;
-	}
-	return 0;
-}
-int restore_extra_gfn(struct domain *d, unsigned long gpa)
+int restore_extra_gfn(struct domain *d, struct extra_mem_node *node, unsigned long gfn)
 {
 	struct p2m_domain *p2m;
 	unsigned long *src_pte_content;
+	unsigned long j;
+	int step, offset;
+	unsigned long gpa;
 	
 	p2m = p2m_get_hostp2m(d);
-	d->extra_set_flag = 2;
+	if(node != NULL){
+		spin_lock(&node->em_node_lock);
+		for(j=0; j<512; j++){
+			offset = j;
+			gpa = (gfn<<12);
+			gpa |= (j*8);
+			step = em_get_step(node->step_expireTime[offset]);
+			if(step == 4){
+				src_pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);
+				if(src_pte_content == NULL){
+					printk("<VT> restore_extra_gfn map error\n");
+					return -1;
+				}
+				*src_pte_content = node->update_pte_val[offset];	
 
-	src_pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);
-	if(src_pte_content == NULL){
-		printk("<VT> restore_extra_gfn map error\n");
+				em_set_step(&(node->step_expireTime[offset]), 5);
+			}
+			else if(step == 2){
+				em_set_step(&(node->step_expireTime[offset]), 1);
+				(node->total_lock_num) -= 1;
+			}
+			else if(step == 3){
+				em_set_step(&(node->step_expireTime[offset]), 1);
+				(node->total_lock_num) -= 1;
+				add_mfn_to_list(d, node->extra_map_mfn[offset]);						
+				node->extra_map_mfn[offset] = 0;
+			}
+		}
+		spin_unlock(&node->em_node_lock);
+	}
+	else{
+		printk("<VT> wrong gfn for em_root\n");
 		return -1;
 	}
-	*src_pte_content = d->new_pte_val; 
+
+	return 0;
+}
+int restore_all_extra_gfn(struct domain *d)
+{
+	int i;
+//	int num_restore;
+	struct extra_mem_node *node;
+	
+//	node = xmalloc_array(struct extra_mem_node *, d->em_total_gfn);
+//	num_restore = radix_tree_gang_lookup(&d->em_root, (void **)node, 0, d->em_total_gfn);
+//	for(i=0; i<num_restore; i++){
+	for(i=0; i<(d->max_pages); i++){
+		node = radix_tree_lookup(&d->em_root, i);
+		if(node != NULL){
+			if(node->total_lock_num != 0){
+				restore_extra_gfn(d, node, i);
+			}
+		}
+	}
+//	xfree(node);
+	return 0;
+}
+
+/************************Radix Tree Routines***************************/
+static struct radix_tree_node *rtn_alloc(void *arg)
+{
+	struct radix_tree_node *rtn;
+	rtn = xmalloc_array(struct radix_tree_node, 1);
+	return rtn;
+}
+/************************Radix Tree Routines***************************/
+
+
+int start_to_map(struct domain *d, struct p2m_domain *p2m, unsigned long gpa, unsigned long *buff)
+{
+	unsigned long gfn;
+	int rc;
+	struct extra_mem_node *node;
+	int i;
+	gfn = gpa>>12;
+
+
+	if( (node =  radix_tree_lookup(&d->em_root, gfn)) == NULL ){
+		node = xmalloc_array(struct extra_mem_node, 1);
+		if(node == NULL){
+			printk("<VT> alloc extra_mem_node ERROR\n");
+			return -1;
+		}
+		rc = radix_tree_insert(&d->em_root, gfn, node, rtn_alloc, NULL);
+		if(rc){
+			printk("<VT> radix tree insert ERRPR\n");
+			return -1;
+		}
+	}
+
+
+	//set extra_mem_node
+   	spin_lock_init(&node->em_node_lock);
+	node->total_lock_num = 512;
+	for(i=0; i<512; i++){
+		if(buff[i] == 1){
+			(node->total_lock_num) -= 1;
+			em_set_step(&(node->step_expireTime[i]), 1);
+		}
+		else{
+			node->extra_map_mfn[i] = 0;
+			node->update_pte_val[i] = 0;
+			em_set_step(&(node->step_expireTime[i]), 2);
+			em_set_expireTime(&(node->step_expireTime[i]), d->wait_invalid);
+		}
+	}
+
+
+	p2m_change_type(p2m, gfn, p2m_ram_rw, p2m_ram_pte_w_lock);
+	printk("start mapping, lock gfn:%lx\n", gfn);
+	return 0;
+}
+int add_space_to_list(struct domain *d, unsigned long *host_buff, unsigned long *buff, unsigned long num)
+{
+	unsigned long i, mfn;
+	struct domain *host_d;
+	int rc;
+	host_d = get_domain_by_id(host_buff[0]);
+
+	for(i=0; i<num; i++){
+		mfn = va_to_mfn(host_d->vcpu[0], host_buff[1], buff[i]);
+		if(mfn == INVALID_MFN){
+			printk("<VT>host free page va to mfn error\n");
+			return -1;
+		}
+		rc = add_mfn_to_list(d, mfn);
+		if(rc){
+			return -1;
+		}
+	}
 	return 0;
 }
 
@@ -2800,16 +2966,9 @@ int do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *b
     struct p2m_domain *p2m;
     int i;
 	unsigned long *longBuff;
-
-    struct domain* host_d;
-	unsigned long mfn, extra_gfn;
-
 	unsigned long *pte_content;
-	char *test_map;
-	int ret;
 
 	longBuff = (unsigned long *)buf1;
-
 	p2m = p2m_get_hostp2m(d);
 
     if(d==NULL)
@@ -2853,48 +3012,31 @@ int do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *b
             }
             spin_unlock(&(d->recent_cr3_lock));
             break;
+
+
+
 		case 4:
-			/*lock assigned gpa>>12 and set target_pte_gpa*/
-			d->target_pte_gpa = arg;
-			d->extra_set_flag = 0;
-			p2m_change_type(p2m, (arg>>12), p2m_ram_rw, p2m_ram_pte_w_lock);
-			printk("lock gfn:%lx and set target_pte_gpa to %lx\n", (arg>>12), d->target_pte_gpa);
+			/*start to map 
+			 *  arg -> gpa
+			 *
+			 * 	longBuff[512] if longBuff[k] == 1 -> do not lock that page
+			 * */
+			return start_to_map(d, p2m, arg, longBuff);
 			break;
 		case 5:
-			/*set extra gfn to ept table
+			/* add free space to em_free_list
+			 *	arg = total mfn size
+			 * 	
+			 *  buf1[0] -> host_id
+			 *  buf1[1] -> host_cr3
 			 *
-			 * domID -> guest_domID
-			 * arg -> host_free_page_va
-			 * longBuff[0] -> host_domID
-			 * longBuff[1] -> host cr3
-			 *
+			 *  buf2 -> mfn list
 			 * */
-			host_d = get_domain_by_id(longBuff[0]);
-			mfn = va_to_mfn(host_d->vcpu[0], longBuff[1], arg);
-			if(mfn == INVALID_MFN){
-				printk("<VT>host free page va to mfn error\n");
-				return -1;
-			}
-			extra_gfn = (d->max_pages) + 20;
-			d->extra_gfn = extra_gfn;
-			ret = set_extra_gfn_to_ept(p2m, extra_gfn, mfn);
-			if(ret){
-				printk("<VT> set entry error\n");
-				return -1;
-			}
-			test_map = (char *)map_guest_paddr(p2m, (d->extra_gfn)<<12);
-			if(test_map == NULL){
-				printk("<VT> map error\n");
-				return -1;
-			}
-			printk("<VT>map domID:%d extra_gfn:%lx to mfn:%lx map_value:%c\n",
-					domID, extra_gfn, mfn, *test_map);		
+			return add_space_to_list(d, (unsigned long *)buf1, (unsigned long *)buf2, arg);
 			break;
 		case 6:
 			/*restore extra gfn*/
-			domain_pause(d);
-			restore_extra_gfn(d, d->target_pte_gpa);
-			domain_unpause(d);
+			restore_all_extra_gfn(d);
 			break;
 		case 7:
 			/*restore page type*/
@@ -2906,6 +3048,21 @@ int do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *b
 			pte_content = (unsigned long *)map_guest_paddr(p2m, arg);
 			*pte_content = longBuff[0];
 			printk("<VT> set pte_content to %lx\n", longBuff[0]);
+			break;
+
+		case 9:
+			/*init em system
+			 *  longBuff[0] -> wait_invalid
+			 *  longBuff[1] -> wait_swap_out
+			 *  longBuff[2] -> wait_restoring
+			 * */
+    		radix_tree_init();
+			d->em_start_gfn = (d->max_pages) + 0x1000;
+			d->em_total_gfn = (d->max_pages)/512;
+
+			d->wait_invalid = longBuff[0];
+			d->wait_swap_out = longBuff[1];
+			d->wait_restoring = longBuff[2];
 			break;
 
 	}

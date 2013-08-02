@@ -139,6 +139,7 @@ tmem.o: tmem.c /home/Xen/MemoryMonitor/xen/include/xen/tmem_xen.h \
  /home/Xen/MemoryMonitor/xen/include/asm/numa.h \
  /home/Xen/MemoryMonitor/xen/include/xen/multicall.h \
  /home/Xen/MemoryMonitor/xen/include/asm/multicall.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/radix-tree.h \
  /home/Xen/MemoryMonitor/xen/include/compat/vcpu.h \
  /home/Xen/MemoryMonitor/xen/include/xen/guest_access.h \
  /home/Xen/MemoryMonitor/xen/include/asm/guest_access.h \
@@ -153,5 +154,4 @@ tmem.o: tmem.c /home/Xen/MemoryMonitor/xen/include/xen/tmem_xen.h \
  /home/Xen/MemoryMonitor/xen/include/public/tmem.h \
  /home/Xen/MemoryMonitor/xen/include/compat/tmem.h \
  /home/Xen/MemoryMonitor/xen/include/xen/tmem.h \
- /home/Xen/MemoryMonitor/xen/include/xen/rbtree.h \
- /home/Xen/MemoryMonitor/xen/include/xen/radix-tree.h
+ /home/Xen/MemoryMonitor/xen/include/xen/rbtree.h

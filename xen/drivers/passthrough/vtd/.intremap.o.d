@@ -138,6 +138,7 @@ intremap.o: intremap.c /home/Xen/MemoryMonitor/xen/include/xen/irq.h \
  /home/Xen/MemoryMonitor/xen/include/asm/numa.h \
  /home/Xen/MemoryMonitor/xen/include/xen/multicall.h \
  /home/Xen/MemoryMonitor/xen/include/asm/multicall.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/radix-tree.h \
  /home/Xen/MemoryMonitor/xen/include/compat/vcpu.h \
  /home/Xen/MemoryMonitor/xen/include/asm/hvm/iommu.h \
  /home/Xen/MemoryMonitor/xen/include/xen/pci_regs.h iommu.h dmar.h \

@@ -139,6 +139,7 @@ stop_machine.o: stop_machine.c \
  /home/Xen/MemoryMonitor/xen/include/asm/numa.h \
  /home/Xen/MemoryMonitor/xen/include/xen/multicall.h \
  /home/Xen/MemoryMonitor/xen/include/asm/multicall.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/radix-tree.h \
  /home/Xen/MemoryMonitor/xen/include/compat/vcpu.h \
  /home/Xen/MemoryMonitor/xen/include/xen/stop_machine.h \
  /home/Xen/MemoryMonitor/xen/include/xen/cpu.h \

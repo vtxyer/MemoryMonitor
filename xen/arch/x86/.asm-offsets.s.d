@@ -139,6 +139,7 @@ asm-offsets.s: x86_64/asm-offsets.c \
  /home/Xen/MemoryMonitor/xen/include/asm/numa.h \
  /home/Xen/MemoryMonitor/xen/include/xen/multicall.h \
  /home/Xen/MemoryMonitor/xen/include/asm/multicall.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/radix-tree.h \
  /home/Xen/MemoryMonitor/xen/include/compat/vcpu.h \
  /home/Xen/MemoryMonitor/xen/include/asm/fixmap.h \
  /home/Xen/MemoryMonitor/xen/include/asm/apicdef.h \

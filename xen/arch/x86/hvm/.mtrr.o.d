@@ -140,6 +140,7 @@ mtrr.o: mtrr.c /home/Xen/MemoryMonitor/xen/include/public/hvm/e820.h \
  /home/Xen/MemoryMonitor/xen/include/asm/numa.h \
  /home/Xen/MemoryMonitor/xen/include/xen/multicall.h \
  /home/Xen/MemoryMonitor/xen/include/asm/multicall.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/radix-tree.h \
  /home/Xen/MemoryMonitor/xen/include/compat/vcpu.h \
  /home/Xen/MemoryMonitor/xen/include/xen/perfc.h \
  /home/Xen/MemoryMonitor/xen/include/xen/domain_page.h \

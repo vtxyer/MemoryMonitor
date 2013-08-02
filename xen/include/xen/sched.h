@@ -27,6 +27,10 @@
 #include <xen/nodemask.h>
 #include <xen/multicall.h>
 
+/*<VT> add*/
+#include <xen/radix-tree.h>
+
+
 #ifdef CONFIG_COMPAT
 #include <compat/vcpu.h>
 DEFINE_XEN_GUEST_HANDLE(vcpu_runstate_info_compat_t);
@@ -202,12 +206,21 @@ struct mem_event_domain
 
 
 /*<VT> add*/
-struct extra_mem_node{
+struct extra_mem_node
+{
+	spinlock_t	em_node_lock;
 	uint16_t total_lock_num;
 	unsigned long extra_map_mfn[512];
 	unsigned long update_pte_val[512];
-	uint16_t step_expireTime[512];
+	uint16_t step_expireTime[512]; //bit[15:8]->step, bit[7:0]->expireTime
 };
+struct em_free_list{
+	struct list_head list;
+	unsigned long mfn;
+};
+//struct em_map_node{
+//	struct extra_mem_node *node;
+//};
 
 struct domain
 {
@@ -349,12 +362,18 @@ struct domain
 	unsigned long *recent_cr3;
 
 	/*<VT> For map page*/
-	int extra_set_flag;
-	unsigned long target_pte_gpa;
-	unsigned long new_pte_val;	
-	unsigned long extra_gfn;	
-
+	struct em_free_list em_free_list;
+	spinlock_t em_free_list_lock;
+//	struct radix_tree_root em_map_root; //gpa is key
+//	spinlock_t em_map_tree_lock;
+	struct radix_tree_root em_root;
+	uint16_t wait_invalid;
+	uint16_t wait_swap_out;
+	uint16_t wait_restoring;
+	unsigned long em_start_gfn;	
+	unsigned long em_total_gfn; //number of Memory_size/2MB	
 };
+
 
 struct domain_setup_info
 {

@@ -37,6 +37,10 @@
 #include <xen/trace.h>
 #include <xen/tmem.h>
 
+/*<VT> add*/
+#include <xen/radix-tree.h>
+
+
 /* Linux config option: propageted to domain0 */
 /* xen_processor_pmbits: xen control Cx, Px, ... */
 unsigned int xen_processor_pmbits = XEN_PROCESSOR_PM_PX;
@@ -251,7 +255,11 @@ struct domain *domain_create(
 	d->recent_cr3 = NULL;
 	d->recent_cr3_size = 0;
 	d->sample_flag = 0;
-
+	INIT_LIST_HEAD( &(d->em_free_list.list) );
+    spin_lock_init(&d->em_free_list_lock);
+//	INIT_RADIX_TREE(&d->em_map_root, GFP_ATOMIC);
+//  spin_lock_init(&d->em_map_tree_lock);
+	INIT_RADIX_TREE(&d->em_root, GFP_ATOMIC);
 
     if ( domcr_flags & DOMCRF_hvm )
         d->is_hvm = 1;

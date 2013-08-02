@@ -138,6 +138,7 @@ multicall.o: multicall.c /home/Xen/MemoryMonitor/xen/include/xen/config.h \
  /home/Xen/MemoryMonitor/xen/include/xen/nodemask.h \
  /home/Xen/MemoryMonitor/xen/include/xen/numa.h \
  /home/Xen/MemoryMonitor/xen/include/asm/numa.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/radix-tree.h \
  /home/Xen/MemoryMonitor/xen/include/compat/vcpu.h \
  /home/Xen/MemoryMonitor/xen/include/xen/event.h \
  /home/Xen/MemoryMonitor/xen/include/xen/softirq.h \

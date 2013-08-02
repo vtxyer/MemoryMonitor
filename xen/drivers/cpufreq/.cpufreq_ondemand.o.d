@@ -139,6 +139,7 @@ cpufreq_ondemand.o: cpufreq_ondemand.c \
  /home/Xen/MemoryMonitor/xen/include/asm/numa.h \
  /home/Xen/MemoryMonitor/xen/include/xen/multicall.h \
  /home/Xen/MemoryMonitor/xen/include/asm/multicall.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/radix-tree.h \
  /home/Xen/MemoryMonitor/xen/include/compat/vcpu.h \
  /home/Xen/MemoryMonitor/xen/include/acpi/cpufreq/cpufreq.h \
  /home/Xen/MemoryMonitor/xen/include/acpi/cpufreq/processor_perf.h \

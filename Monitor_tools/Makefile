@@ -1,4 +1,4 @@
-file=main.cpp hypercall.cpp  pageWalk.cpp bitManage.cpp
+file=main.cpp hypercall.cpp  pageWalk.cpp bitManage.cpp communicate.cpp
 cc=g++
 output=analyze
 all:

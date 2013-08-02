@@ -145,4 +145,5 @@ numa.o: numa.c /home/Xen/MemoryMonitor/xen/include/xen/mm.h \
  /home/Xen/MemoryMonitor/xen/include/public/io/../xen-compat.h \
  /home/Xen/MemoryMonitor/xen/include/xen/multicall.h \
  /home/Xen/MemoryMonitor/xen/include/asm/multicall.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/radix-tree.h \
  /home/Xen/MemoryMonitor/xen/include/compat/vcpu.h

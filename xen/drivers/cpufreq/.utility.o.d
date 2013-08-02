@@ -138,6 +138,7 @@ utility.o: utility.c /home/Xen/MemoryMonitor/xen/include/xen/errno.h \
  /home/Xen/MemoryMonitor/xen/include/asm/numa.h \
  /home/Xen/MemoryMonitor/xen/include/xen/multicall.h \
  /home/Xen/MemoryMonitor/xen/include/asm/multicall.h \
+ /home/Xen/MemoryMonitor/xen/include/xen/radix-tree.h \
  /home/Xen/MemoryMonitor/xen/include/compat/vcpu.h \
  /home/Xen/MemoryMonitor/xen/include/xen/trace.h \
  /home/Xen/MemoryMonitor/xen/include/public/trace.h \
