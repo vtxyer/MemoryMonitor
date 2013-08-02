@@ -68,6 +68,7 @@
 #include <asm/hvm/emulate.h>
 #include <asm/hvm/vmx/vmx.h>
 #include <xen/radix-tree.h>
+#include <xen/list.h>
 
 bool_t __read_mostly hvm_enabled;
 
@@ -1130,36 +1131,37 @@ static void* map_guest_paddr(struct p2m_domain *p2m, unsigned long gpa)
 	return map_domain_page(mfn_x(mfn)) + (gpa & mask);
 }
 
-static int em_get_step(uint16_t *node)
+
+
+static int em_get_step(uint16_t node)
 {
-	int step;
-	step = 0;
-	step |= ((*node)>>8);
-	return step;
+    int step;
+    step = ((node)>>8);
+    return step;
 }
-static int em_get_expireTime(uint16_t *node){
-	int expireTime;
-	expireTime = 0;
-	expireTime = (*node) = 0xffff;
-	return expireTime;
-}
+/*static int em_get_expireTime(uint16_t node){
+    int expireTime;
+    expireTime = node&0xff;
+    return expireTime;
+}*/
 static void em_set_step(uint16_t *node, int val){
-	int tmp;
-	tmp = em_get_step(node);
-	tmp <<= 8;
-	tmp >>= 8;
-	val <<= 8;
-	val |= tmp;
-	*node = val;
+    int tmp;
+    unsigned int mask;
+    mask = 0xff;
+    tmp = (*node) & mask;
+    val <<= 8;
+    val |= tmp;
+    *node = val;
 }
 static void em_set_expireTime(uint16_t *node, int val){
-	int tmp;
-	tmp = em_get_expireTime(node);
-	tmp >>= 8;
-	tmp <<= 8;
-	val |= tmp;
-	*node = val;
+    int tmp;
+    unsigned int mask;
+    mask = 0xff00;
+    tmp = (*node) & mask;
+    val |= tmp;
+    *node = val;
 }
+
 
 /*int add_node_to_map_tree(struct domain *d, struct extra_mem_node *node, unsigned long gpa)
 {
@@ -1181,19 +1183,19 @@ static void em_set_expireTime(uint16_t *node, int val){
 	}
 	return 0;
 }*/
-int emulate_intr(struct hvm_emulate_ctxt ctxt, struct cpu_user_regs *regs)
+int emulate_intr(struct hvm_emulate_ctxt ctxt, struct cpu_user_regs *regs, 
+	p2m_type_t from, p2m_type_t to, struct p2m_domain *p2m, unsigned long gfn)
 {
     int rc;
 
+	p2m_change_type(p2m, gfn, from, p2m_ram_rw);
     hvm_emulate_prepare(&ctxt, regs);
-
     rc = hvm_emulate_one(&ctxt);
 
     switch ( rc )
     {
     case X86EMUL_UNHANDLEABLE:
-        gdprintk(XENLOG_WARNING,
-                 "<VT> emulation failed @ %04x:%lx: "
+        printk(  "<VT> emulation failed @ %04x:%lx: "
                  "%02x %02x %02x %02x %02x %02x\n",
                  hvmemul_get_seg_reg(x86_seg_cs, &ctxt)->sel,
                  ctxt.insn_buf_eip,
@@ -1202,14 +1204,16 @@ int emulate_intr(struct hvm_emulate_ctxt ctxt, struct cpu_user_regs *regs)
                  ctxt.insn_buf[4], ctxt.insn_buf[5]);
         return 1;
     case X86EMUL_EXCEPTION:
+		printk("<VT> X86EMUL_EXCEPTION\n");
         if ( ctxt.exn_pending )
             hvm_inject_exception(ctxt.exn_vector, ctxt.exn_error_code, 0);
         break;
     default:
+	    hvm_emulate_writeback(&ctxt);
         break;
     }
+	p2m_change_type(p2m, gfn, p2m_ram_rw, to);
 
-    hvm_emulate_writeback(&ctxt);
 
     return 0;
 }
@@ -1237,13 +1241,17 @@ int refund_data(struct domain *d, struct extra_mem_node *node, uint16_t offset, 
 	unsigned long mfn;
 	int lock_num;
 
+	printk("<VT> into refund step\n");
+
 	spin_lock(&node->em_node_lock);
 	(node->total_lock_num)--;
 	lock_num = node->total_lock_num;
 	mfn = node->extra_map_mfn[offset];
 	node->extra_map_mfn[offset] = 0;
-	em_set_step(node->step_expireTime, 1);
+	em_set_step(&(node->step_expireTime[offset]), 1);
 	spin_unlock(&node->em_node_lock);
+
+	printk("<VT> refund step 1 ok\n");
 
 	/*delete map node*/
 //	spin_lock(&d->em_map_tree_lock);
@@ -1251,10 +1259,9 @@ int refund_data(struct domain *d, struct extra_mem_node *node, uint16_t offset, 
 //	spin_unlock(&d->em_map_tree_lock);
 
 	/*add mfn back to free list*/
-	spin_lock(&d->em_free_list_lock);
 	add_mfn_to_list(d, mfn);
-	spin_lock(&d->em_free_list_lock);
 
+	printk("<VT> refund data ok\n");
 	if(lock_num == 0){
 		return 1;
 	}
@@ -1287,9 +1294,11 @@ int run_if_restore_procedure(struct vcpu *v, struct p2m_domain *p2m, struct cpu_
 	unsigned int present_bit;
 	struct hvm_emulate_ctxt ctxt;
 	int rc;
+	unsigned long gfn;
 
+	gfn = gpa >> 12;
 	/* Emulate X86 instruction or change to update rip??*/
-	rc = emulate_intr(ctxt, regs);
+	rc = emulate_intr(ctxt, regs, p2m_ram_pte_w_lock, p2m_ram_pte_w_lock, p2m, gfn);
 	if(rc){
 		printk("<VT>run_if_restore_procedure emulate error\n");
 		return -1;
@@ -1352,7 +1361,7 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 	/*<VT> add*/
 	struct extra_mem_node *node;
 	unsigned int offset;
-	unsigned long extra_mfn;
+	unsigned long extra_mfn, extra_gfn;
 	struct em_free_list *freeNode;
 
 	unsigned long cr3;
@@ -1365,13 +1374,11 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 	struct hvm_emulate_ctxt ctxt;
 	int rc;
 
-
+	d = v->domain;
     mfn = gfn_to_mfn_type_current(p2m, gfn, &p2mt, &p2ma, p2m_guest);
 
 	/*<VT> add*/
 	if(p2mt == p2m_ram_pte_w_lock){
-		d = v->domain;
-		p2m_change_type(p2m, gfn, p2m_ram_pte_w_lock, p2m_ram_rw);
 		node = radix_tree_lookup(&d->em_root, gfn);
 		if(node == NULL){
 			printk("<VT>ERROR: into violation but gfn is null\n");
@@ -1379,13 +1386,18 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 		}
 		offset = gpa & 0xfff;
 		offset /= 8;
+
 		spin_lock(&node->em_node_lock);
-		step = em_get_step(&(node->step_expireTime[offset]));
+		step = em_get_step(node->step_expireTime[offset]);
 		spin_unlock(&node->em_node_lock);
+
 		cr3 = v->arch.hvm_vcpu.guest_cr[3];
 		pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);
 		present_bit = 0;
 		present_bit = (*pte_content) & 1;
+
+		printk("<VT> into lock gfn:%lx offset:%u step:%u present_bit:%u rax:%lx\n",
+				gfn, offset, step, present_bit, regs->rax);
 
 		/*PTE from 1->0, their two step s this the first */
 		if(step == 2 && present_bit == 1 && regs->rax == (unsigned long)0 ){
@@ -1393,7 +1405,9 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 
 			/*get free page*/
 			spin_lock(&d->em_free_list_lock);
-			freeNode = list_entry(&d->em_free_list.list, struct em_free_list, list);
+			list_for_each_entry(freeNode, &d->em_free_list.list, list){
+				break;
+			}
 			if(freeNode == NULL){
 				spin_unlock(&d->em_free_list_lock);
 				printk("<VT> there are no free page to map\n");
@@ -1408,7 +1422,7 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 
 
 			/*setup EPT && copy page content*/
-			set_extra_gfn_to_ept(p2m, extra_mfn + d->em_start_gfn, mfn);
+			set_extra_gfn_to_ept(p2m, extra_mfn + d->em_start_gfn, extra_mfn);
 			new_data_page_paddr = ((extra_mfn + d->em_start_gfn)<<12);
 			new_data_content = (unsigned long *)map_guest_paddr(p2m, new_data_page_paddr);
 			if(new_data_content == NULL){
@@ -1420,11 +1434,11 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 			memcpy(new_data_content, data_content, 4096);			
 
 			/* Emulate X86 instruction or change to update rip??*/
-			emulate_intr(ctxt, regs);
+			emulate_intr(ctxt, regs, p2m_ram_pte_w_lock, p2m_ram_pte_w_lock, p2m ,gfn);
 
 			/*change value in extra_mem_node*/
 			spin_lock(&node->em_node_lock);
-			node->total_lock_num++;
+//			node->total_lock_num++;
 			em_set_step(&(node->step_expireTime[offset]), 3);
 			em_set_expireTime(&(node->step_expireTime[offset]), d->wait_swap_out);
 			node->extra_map_mfn[offset] = extra_mfn;
@@ -1433,13 +1447,20 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 			printk("<VT> step 3 OK\n");
 			unmap_domain_page((void *)new_data_content);
 			unmap_domain_page((void *)data_content);
+
+			unmap_domain_page((void *)pte_content);
+			return 1;
 		}
-		/*second steps, write PTE to swap id(swap out)*/
+		/*second steps, write PTE to swap id(swap out)
+		 *
+		 * 還需要有更多的check  看值是不是改為沒有0x8開頭的PTE content????
+		 * */
 		else if(step == 3){
 			printk("<VT> into swap out stage\n");
 
 			/* Emulate X86 instruction or change to update rip??*/
-			emulate_intr(ctxt, regs);
+			/*Linux kernel will read value to check, so we cannot change PTE here*/
+			emulate_intr(ctxt, regs, p2m_ram_pte_w_lock, p2m_ram_paged, p2m, gfn);
 
 			/*change value in extra_mem_node*/
 			spin_lock(&node->em_node_lock);
@@ -1447,41 +1468,32 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 			node->update_pte_val[offset] = *pte_content;
 			spin_unlock(&node->em_node_lock);
 
-			/*Linux kernel will read value to check, so we cannot change PTE here*/
-			p2m_change_type(p2m, gfn, p2m_ram_rw, p2m_ram_paged);
 			return 1;
 		}
-		/*map sucess keep recording*/
-		else if(step == 4){
-			printk("<VT> into update eip\n");
-		}
-		/*restore procedure*/
-		else if(step == 5){
-			printk("<VT> into restore stage\n");
+		/*map sucess keep recording or restore procedure*/
+		else if(step == 5 || step == 4){
+			printk("<VT> into update rip or restore stage\n");
 			rc = run_if_restore_procedure(v, p2m, regs, pte_content, node, offset, gpa);
 			if(rc){
+				p2m_change_type(p2m, gfn, p2m_ram_pte_w_lock, p2m_ram_rw);
 				return 1;
 			}
 			else{
-				p2m_change_type(p2m, gfn, p2m_ram_rw, p2m_ram_pte_w_lock);
 				return 1;
 			}
 		}
 		/* state:1 lock but bit not change to 0*/
 		else{
-			emulate_intr(ctxt, regs);
+			emulate_intr(ctxt, regs, p2m_ram_pte_w_lock, p2m_ram_pte_w_lock, p2m, gfn);
 		}
 
 		unmap_domain_page((void *)pte_content);
-		p2m_change_type(p2m, gfn, p2m_ram_rw, p2m_ram_pte_w_lock);
 		return 1;
 ERROR:
 		unmap_domain_page((void *)pte_content);
-		p2m_change_type(p2m, gfn, p2m_ram_rw, p2m_ram_pte_w_lock);
 		return 0;
 TRY_NEXT_TIME:
 		unmap_domain_page((void *)pte_content);
-		p2m_change_type(p2m, gfn, p2m_ram_rw, p2m_ram_pte_w_lock);
 		return 1;
 	}
 
@@ -1496,14 +1508,17 @@ TRY_NEXT_TIME:
 		offset = gpa & 0xfff;
 		offset /= 8;
 
-		p2m_change_type(p2m, gfn, p2m_ram_paged, p2m_ram_rw);
 		/* Emulate X86 instruction*/
-		rc = emulate_intr(ctxt, regs);
+		rc = emulate_intr(ctxt, regs, p2m_ram_paged, p2m_ram_pte_w_lock, p2m, gfn);
 		/* set extar page to PTE */
 		pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);
-		*pte_content = 0x8000000000000000 + 
-					( (node->extra_map_mfn[offset]) + v->domain->em_start_gfn) + 0x067;
-		p2m_change_type(p2m, gfn, p2m_ram_rw, p2m_ram_pte_w_lock);
+
+		spin_lock(&node->em_node_lock);
+		extra_gfn =  ( (node->extra_map_mfn[offset]) + v->domain->em_start_gfn);
+		spin_unlock(&node->em_node_lock);
+		*pte_content = 0x8000000000000000 + (extra_gfn<<12) + 0x067;
+		printk("<VT> gpa:%lx offset:%u write PTE:%lx\n", gpa, offset,
+			*pte_content);
 		return 1;
 	}
 

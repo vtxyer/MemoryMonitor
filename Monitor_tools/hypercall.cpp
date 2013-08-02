@@ -33,20 +33,35 @@ void get_cr3_hypercall(unsigned long *cr3_list, int &list_size, int fd){
 	}
 	cr3_list[i+1] = 0;
 }
-int lock_gfn_hypercall(unsigned long gpa, int fd){
+int init_em_hypercall(unsigned long *buff, int fd){
 	int ret, i;
-
 	//Init
 	privcmd_hypercall_t hyper1 = { 
 		__HYPERVISOR_vt_op, 
-		{ 4, domID, gpa, 0, 0}
+		{ 9, domID, 0, (__u64)buff, 0}
 	};
 	ret = ioctl(fd, IOCTL_PRIVCMD_HYPERCALL, &hyper1);
-
 	return ret;
 }
-
-
-
+int add_free_list_hypercall(unsigned long size, unsigned long *host, unsigned long *list, int fd){
+	int ret, i;
+	//Init
+	privcmd_hypercall_t hyper1 = { 
+		__HYPERVISOR_vt_op, 
+		{ 5, domID, size, (unsigned long)host, (unsigned long)list}
+	};
+	ret = ioctl(fd, IOCTL_PRIVCMD_HYPERCALL, &hyper1);
+	return ret;
+}
+int start_mapping_hypercall(unsigned long gpa, unsigned long *no_lock_list, int fd){
+	int ret, i;
+	//Init
+	privcmd_hypercall_t hyper1 = { 
+		__HYPERVISOR_vt_op, 
+		{ 4, domID, gpa, (__u64)no_lock_list, 0}
+	};
+	ret = ioctl(fd, IOCTL_PRIVCMD_HYPERCALL, &hyper1);
+	return ret;
+}
 }
 

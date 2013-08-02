@@ -13,6 +13,7 @@ extern "C"{
 #include <sys/mman.h>
 #include <xs.h>
 #include <setjmp.h>
+
 }
 #include <map>
 using namespace std;
@@ -22,6 +23,9 @@ using namespace std;
 #define ADDR_MASK 0x0000ffffffffffff
 #define RECENT_CR3_SIZE 50
 
+#define EM_WAIT_INVALID 20
+#define EM_WAIT_SWAP_OUT 5
+#define EM_WAIT_RESTORING 50
 
 typedef unsigned long addr_t;
 typedef unsigned long mfn_t;
@@ -154,10 +158,14 @@ extern "C"{
 int init_hypercall(int recent_cr3_size, int fd);
 void get_cr3_hypercall(unsigned long *cr3_list, int &list_size, int fd);
 int lock_gfn_hypercall(unsigned long gpa, int fd);
+int init_em_hypercall(unsigned long *buff, int fd);
+int add_free_list_hypercall(unsigned long size, unsigned long *host, unsigned long *list, int fd);
+int start_mapping_hypercall(unsigned long gpa, unsigned long *no_lock_list, int fd);
 }
 
 
-
+/*Communate*/
+int set_free_list(char *ip, int port, unsigned long host_id, unsigned long host_cr3, int fd);
 
 
 /* Page Walk */

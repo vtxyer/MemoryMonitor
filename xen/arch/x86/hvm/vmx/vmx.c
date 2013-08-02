@@ -2719,34 +2719,33 @@ asmlinkage void vmx_vmenter_helper(void)
 /*<VT> add*/
 static int em_get_step(uint16_t node)
 {
-	int step;
-	step = 0;
-	step |= ((node)>>8);
-	return step;
+    int step;
+    step = ((node)>>8);
+    return step;
 }
-static int em_get_expireTime(uint16_t node){
-	int expireTime;
-	expireTime = 0;
-	expireTime = (node) = 0xffff;
-	return expireTime;
-}
+/*static int em_get_expireTime(uint16_t node){
+    int expireTime;
+    expireTime = node&0xff;
+    return expireTime;
+}*/
 static void em_set_step(uint16_t *node, int val){
-	int tmp;
-	tmp = em_get_step(*node);
-	tmp <<= 8;
-	tmp >>= 8;
-	val <<= 8;
-	val |= tmp;
-	*node = val;
+    int tmp;
+    unsigned int mask;
+    mask = 0xff;
+    tmp = (*node) & mask;
+    val <<= 8;
+    val |= tmp;
+    *node = val;
 }
 static void em_set_expireTime(uint16_t *node, int val){
-	int tmp;
-	tmp = em_get_expireTime(*node);
-	tmp >>= 8;
-	tmp <<= 8;
-	val |= tmp;
-	*node = val;
+    int tmp;
+    unsigned int mask;
+    mask = 0xff00;
+    tmp = (*node) & mask;
+    val |= tmp;
+    *node = val;
 }
+
 
 
 
@@ -2941,13 +2940,13 @@ int start_to_map(struct domain *d, struct p2m_domain *p2m, unsigned long gpa, un
 }
 int add_space_to_list(struct domain *d, unsigned long *host_buff, unsigned long *buff, unsigned long num)
 {
-	unsigned long i, mfn;
+	unsigned long i, mfn, host_cr3;
 	struct domain *host_d;
 	int rc;
 	host_d = get_domain_by_id(host_buff[0]);
-
+	host_cr3 = host_buff[1];
 	for(i=0; i<num; i++){
-		mfn = va_to_mfn(host_d->vcpu[0], host_buff[1], buff[i]);
+		mfn = va_to_mfn(host_d->vcpu[0], host_cr3, buff[i]);
 		if(mfn == INVALID_MFN){
 			printk("<VT>host free page va to mfn error\n");
 			return -1;
@@ -3032,6 +3031,8 @@ int do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *b
 			 *
 			 *  buf2 -> mfn list
 			 * */
+			printk("<VT> into free list host_id:%lx cr3:%lx mfn:%lx",
+					longBuff[0], longBuff[1], *((unsigned long *)buf2));
 			return add_space_to_list(d, (unsigned long *)buf1, (unsigned long *)buf2, arg);
 			break;
 		case 6:
@@ -3056,13 +3057,21 @@ int do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *b
 			 *  longBuff[1] -> wait_swap_out
 			 *  longBuff[2] -> wait_restoring
 			 * */
-    		radix_tree_init();
+
 			d->em_start_gfn = (d->max_pages) + 0x1000;
 			d->em_total_gfn = (d->max_pages)/512;
 
 			d->wait_invalid = longBuff[0];
 			d->wait_swap_out = longBuff[1];
 			d->wait_restoring = longBuff[2];
+			break;
+		case 10:
+			/*try to get free page list*/
+			do{
+				struct extra_mem_node *node;
+				node =  radix_tree_lookup(&d->em_root, arg);
+				printk("total_lock_num %u\n", node->total_lock_num);
+			}while(0);
 			break;
 
 	}
