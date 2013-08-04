@@ -53,12 +53,12 @@ int add_free_list_hypercall(unsigned long size, unsigned long *host, unsigned lo
 	ret = ioctl(fd, IOCTL_PRIVCMD_HYPERCALL, &hyper1);
 	return ret;
 }
-int start_mapping_hypercall(unsigned long gpa, unsigned long *no_lock_list, int fd){
+int map_gfn_hypercall(unsigned long gfn, unsigned long *no_lock_list, int fd){
 	int ret, i;
 	//Init
 	privcmd_hypercall_t hyper1 = { 
 		__HYPERVISOR_vt_op, 
-		{ 4, domID, gpa, (__u64)no_lock_list, 0}
+		{ 4, domID, gfn, (__u64)no_lock_list, 0}
 	};
 	ret = ioctl(fd, IOCTL_PRIVCMD_HYPERCALL, &hyper1);
 	return ret;

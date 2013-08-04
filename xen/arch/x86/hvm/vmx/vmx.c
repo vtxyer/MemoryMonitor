@@ -2824,7 +2824,8 @@ int restore_extra_gfn(struct domain *d, struct extra_mem_node *node, unsigned lo
 	unsigned long j;
 	int step, offset;
 	unsigned long gpa;
-	
+
+
 	p2m = p2m_get_hostp2m(d);
 	if(node != NULL){
 		spin_lock(&node->em_node_lock);
@@ -2861,26 +2862,26 @@ int restore_extra_gfn(struct domain *d, struct extra_mem_node *node, unsigned lo
 		return -1;
 	}
 
+
 	return 0;
 }
 int restore_all_extra_gfn(struct domain *d)
 {
-	int i;
-//	int num_restore;
-	struct extra_mem_node *node;
+	unsigned long i;
+	int num_restore;
+	struct extra_mem_node **node;
 	
-//	node = xmalloc_array(struct extra_mem_node *, d->em_total_gfn);
-//	num_restore = radix_tree_gang_lookup(&d->em_root, (void **)node, 0, d->em_total_gfn);
-//	for(i=0; i<num_restore; i++){
-	for(i=0; i<(d->max_pages); i++){
-		node = radix_tree_lookup(&d->em_root, i);
-		if(node != NULL){
-			if(node->total_lock_num != 0){
-				restore_extra_gfn(d, node, i);
+	node = (struct extra_mem_node **)xmalloc_array(struct extra_mem_node *, d->em_total_gfn);
+	num_restore = radix_tree_gang_lookup(&d->em_root, (void **)node, 0, d->em_total_gfn);
+	for(i=0; i<num_restore; i++){
+		if(node[i] != NULL){
+			if(node[i]->total_lock_num != 0){
+				printk("gfn:%lx total_lock_num:%u\n", node[i]->gfn, node[i]->total_lock_num);
+				restore_extra_gfn(d, node[i], node[i]->gfn);
 			}
 		}
 	}
-//	xfree(node);
+	xfree(node);
 	return 0;
 }
 
@@ -2888,19 +2889,21 @@ int restore_all_extra_gfn(struct domain *d)
 static struct radix_tree_node *rtn_alloc(void *arg)
 {
 	struct radix_tree_node *rtn;
+	int i;
 	rtn = xmalloc_array(struct radix_tree_node, 1);
+	for(i=0; i<RADIX_TREE_MAP_SIZE; i++){
+		rtn->slots[i] = NULL;
+	}
 	return rtn;
 }
 /************************Radix Tree Routines***************************/
 
 
-int start_to_map(struct domain *d, struct p2m_domain *p2m, unsigned long gpa, unsigned long *buff)
+int map_gfn(struct domain *d, struct p2m_domain *p2m, unsigned long gfn, unsigned long *buff)
 {
-	unsigned long gfn;
 	int rc;
 	struct extra_mem_node *node;
 	int i;
-	gfn = gpa>>12;
 
 
 	if( (node =  radix_tree_lookup(&d->em_root, gfn)) == NULL ){
@@ -2920,6 +2923,7 @@ int start_to_map(struct domain *d, struct p2m_domain *p2m, unsigned long gpa, un
 	//set extra_mem_node
    	spin_lock_init(&node->em_node_lock);
 	node->total_lock_num = 512;
+	node->gfn = gfn;
 	for(i=0; i<512; i++){
 		if(buff[i] == 1){
 			(node->total_lock_num) -= 1;
@@ -2963,7 +2967,7 @@ int do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *b
 {
     struct domain* d = get_domain_by_id(domID);
     struct p2m_domain *p2m;
-    int i;
+    unsigned long i;
 	unsigned long *longBuff;
 	unsigned long *pte_content;
 
@@ -3016,11 +3020,11 @@ int do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *b
 
 		case 4:
 			/*start to map 
-			 *  arg -> gpa
+			 *  arg -> gfn
 			 *
 			 * 	longBuff[512] if longBuff[k] == 1 -> do not lock that page
 			 * */
-			return start_to_map(d, p2m, arg, longBuff);
+			return map_gfn(d, p2m, arg, longBuff);
 			break;
 		case 5:
 			/* add free space to em_free_list
@@ -3031,13 +3035,29 @@ int do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *b
 			 *
 			 *  buf2 -> mfn list
 			 * */
-			printk("<VT> into free list host_id:%lx cr3:%lx mfn:%lx",
+			do{
+				struct em_free_list *freeNode;
+				int k = 0;
+				freeNode = NULL;
+				list_for_each_entry(freeNode, &d->em_free_list.list, list){
+					if(k==2)
+						break;
+					k++;
+				}
+				if(k == 2){
+					printk("<VT> already map free list\n");
+					return 0;
+				}
+			}while(0);
+			printk("<VT> into free list host_id:%lx cr3:%lx mfn:%lx\n",
 					longBuff[0], longBuff[1], *((unsigned long *)buf2));
 			return add_space_to_list(d, (unsigned long *)buf1, (unsigned long *)buf2, arg);
 			break;
 		case 6:
 			/*restore extra gfn*/
-			restore_all_extra_gfn(d);
+			do{
+				restore_all_extra_gfn(d);
+			}while(0);
 			break;
 		case 7:
 			/*restore page type*/
@@ -3060,17 +3080,19 @@ int do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *b
 
 			d->em_start_gfn = (d->max_pages) + 0x1000;
 			d->em_total_gfn = (d->max_pages)/512;
+			d->em_total_map_pages = 0;
 
 			d->wait_invalid = longBuff[0];
 			d->wait_swap_out = longBuff[1];
 			d->wait_restoring = longBuff[2];
+
+			printk("em_total_gfn %lx\n", d->em_total_gfn);
 			break;
 		case 10:
 			/*try to get free page list*/
 			do{
-				struct extra_mem_node *node;
-				node =  radix_tree_lookup(&d->em_root, arg);
-				printk("total_lock_num %u\n", node->total_lock_num);
+				printk("total pages:%lu size:%lu[M]\n", 
+					d->em_total_map_pages, (d->em_total_map_pages)/256);
 			}while(0);
 			break;
 

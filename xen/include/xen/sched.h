@@ -208,6 +208,7 @@ struct mem_event_domain
 /*<VT> add*/
 struct extra_mem_node
 {
+	unsigned long gfn;
 	spinlock_t	em_node_lock;
 	uint16_t total_lock_num;
 	unsigned long extra_map_mfn[512];
@@ -372,6 +373,7 @@ struct domain
 	uint16_t wait_restoring;
 	unsigned long em_start_gfn;	
 	unsigned long em_total_gfn; //number of Memory_size/2MB	
+	unsigned long em_total_map_pages;
 };
 
 

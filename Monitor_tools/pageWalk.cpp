@@ -67,7 +67,7 @@ unsigned long check_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_si
  * valid_bit=0 => in swap
  * valid_bit=1 => is valid
  * */
-int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsigned long offset, char valid_bit, char huge_bit)
+int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsigned long offset, char valid_bit, char huge_bit, char privilege_bit, char exec_bit, unsigned long *no_lock_list, int *set_em_bit)
 {
 	unsigned long vkey, paddr;
 	char val, tmp;
@@ -136,31 +136,20 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 			ret = 0;		
 		}
 
-		/*set extra memory*/
-		if(set_extra_page == 0 && valid_bit==1 && vkey < 0x7f0cec172010){
-			int temp_change_times = 0;
-			int tmp;
-			temp_change_times = get_change_number(val_ref);
-			if(temp_change_times >= CHANGE_LIMIT)
-			{
-/*				printf("Do you want to lock gfn:%lx? 1->yes, 2->no\n", vkey);
-				scanf("%d", &tmp);
 
-				if(tmp){
-					unsigned long gpa;
-					gpa = (unsigned long)(gw->l2e);
-					gpa >>= 12;
-					gpa <<= 12;
-					gpa += offset*8;
-					lock_gfn_hypercall( gpa, fd);
-					printf("lock gfn:%lx offset:%lx gpa:%lx vaddr:%lx\n", 
-							(gw->l2e)>>12, offset*8, gpa, vkey);				
-					printf("l1offset:%x, l2offset:%x l3offset:%x l4offset:%x\n",
-							gw->l1offset, gw->l2offset, gw->l3offset, gw->l4offset);
-					set_extra_page = 1;
-				}*/
-				printf("%lx times:%lu\n", vkey, temp_change_times);
-			}
+		unsigned long range_start = 0x7f9c4f900010;
+		unsigned long range_end = 0x7f9c94500008;
+
+
+		/*set extra memory*/
+		int temp_change_times = 0;
+		int tmp;
+		temp_change_times = get_change_number(val_ref);
+		if(temp_change_times >= CHANGE_LIMIT && valid_bit == 1 
+				&& privilege_bit == 1 && vkey >= range_start && vkey <= range_end)
+		{
+			no_lock_list[offset] = 0;
+			*set_em_bit = 1;
 		}
 
 
@@ -235,6 +224,9 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 				}
 				for(l2offset=0; l2offset<l2num; l2offset++)
 				{
+					unsigned long no_lock_list[512] = {1};
+					int set_em_bit = 0;
+
 					gw.l2e = l2p[l2offset];
 					gw.l2offset = l2offset;
 					if( !entry_valid(gw.l2e)){
@@ -246,16 +238,17 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 
 						//for ignore already map page => huge page only see User space
 						if( get_bit( gw.l2e, 1, 2) ){
-							total += 512;
+/*							total += 512;
 							hugepage_counter++;					
 							gw.va = get_vaddr(0, l2offset, l3offset, l4offset);
+							char privilege_bit = get_bit(gw.l2e, 1, 2);
 							if( !pte_entry_valid(gw.l2e)){
 								printf("huge swap\n");
-								compare_swap(table, &gw, l2offset, 0, 1);	
+								compare_swap(table, &gw, l2offset, 0, 1, privilege_bit);	
 							}
 							else{
-								compare_swap(table, &gw, l2offset, 1, 1);
-							}
+								compare_swap(table, &gw, l2offset, 1, 1, privilege_bit);
+							}*/
 						}
 
 						continue;
@@ -275,23 +268,40 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 						if( gw.va == 0 )
 							continue;
 
+						char privilege_bit = get_bit(gw.l1e, 1, 2);
+						char exec_bit = get_bit(gw.l1e, 1, 63);
 						if( !pte_entry_valid(gw.l1e))
 						{
 							count++;
 							int ret;
-							ret = compare_swap(table, &gw, l1offset, 0, 0);
+							ret = compare_swap(table, &gw, l1offset, 0, 0, privilege_bit, exec_bit, no_lock_list, &set_em_bit);
 						}
 						else
 						{
 							int ret;
-							//       						total_valid_calculate( (((gw.l1e)>>12)&ADDR_MASK ), table->total_valid_pages);
+							//total_valid_calculate( (((gw.l1e)>>12)&ADDR_MASK ), table->total_valid_pages);
 							(table->total_valid_pages)++;  						
-							ret = compare_swap(table, &gw, l1offset, 1, 0);
+							ret = compare_swap(table, &gw, l1offset, 1, 0, privilege_bit, exec_bit, no_lock_list, &set_em_bit);
 							total++;
 						}
 					}	 
 					munmap(l1p, XC_PAGE_SIZE);
 					l1p = NULL;
+
+					/*set extra memory*/
+					if( total_map_2MB < 200 && set_em_bit)
+					{
+						unsigned long gfn;
+						gfn = (unsigned long)(gw.l2e);
+						gfn >>= 12;
+						if(em_control[gfn] == (unsigned long)NULL){
+							map_gfn_hypercall(gfn, no_lock_list, fd);
+							em_control[gfn] = 1;
+							total_map_2MB++;
+							printf("lock gfn:%lx vaddr:%lx total_map_2MB:%lu\n", 
+								(gw.l2e)>>12, gw.va, total_map_2MB);			
+						}
+					}
 				}	
 				munmap(l2p, XC_PAGE_SIZE);
 				l2p = NULL;

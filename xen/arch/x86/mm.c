@@ -836,7 +836,8 @@ get_page_from_l1e(
     }
 
 	/*<VT> change*/
-    if ( unlikely(real_pg_owner != pg_owner) )
+//    if ( unlikely(real_pg_owner != pg_owner) )
+    if ( real_pg_owner != pg_owner )
     {
         /*
          * Let privileged domains transfer the right to map their target
@@ -846,7 +847,7 @@ get_page_from_l1e(
          */
 //        if ( (real_pg_owner == NULL) || (pg_owner == l1e_owner) ||
 //             !IS_PRIV_FOR(pg_owner, real_pg_owner) )
-        if ( (real_pg_owner == NULL) || (pg_owner == l1e_owner) ){
+        if ( (pg_owner == l1e_owner) ){
 			if(real_pg_owner == NULL)
 				MEM_LOG("real_pg_owner == NULL\n");
 			else if(!IS_PRIV_FOR(pg_owner, real_pg_owner))

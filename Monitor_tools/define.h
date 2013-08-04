@@ -27,11 +27,14 @@ using namespace std;
 #define EM_WAIT_SWAP_OUT 5
 #define EM_WAIT_RESTORING 50
 
+#define FREESIZE 512*4096*200
+
 typedef unsigned long addr_t;
 typedef unsigned long mfn_t;
 typedef char byte;
 typedef map<unsigned long, struct hash_table> DATAMAP;
 typedef map<unsigned long, unsigned long> SYSTEM_MAP;
+typedef map<unsigned long, unsigned long> EM_CONTROL_MAP;
 
 struct mapData
 {
@@ -127,8 +130,8 @@ extern map<unsigned int, Sampled_data> sample_result;
 extern xc_interface *xch4, *xch3, *xch2, *xch1;
 extern sigjmp_buf sigbuf;
 
-extern int set_extra_page;
-
+extern EM_CONTROL_MAP em_control; 
+extern unsigned long total_map_2MB;
 
 /* BitManage */
 //1~7 bits represent change number
@@ -160,7 +163,7 @@ void get_cr3_hypercall(unsigned long *cr3_list, int &list_size, int fd);
 int lock_gfn_hypercall(unsigned long gpa, int fd);
 int init_em_hypercall(unsigned long *buff, int fd);
 int add_free_list_hypercall(unsigned long size, unsigned long *host, unsigned long *list, int fd);
-int start_mapping_hypercall(unsigned long gpa, unsigned long *no_lock_list, int fd);
+int map_gfn_hypercall(unsigned long gpa, unsigned long *no_lock_list, int fd);
 }
 
 
