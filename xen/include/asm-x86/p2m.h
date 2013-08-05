@@ -86,8 +86,8 @@ typedef enum {
     p2m_ram_paging_in_start = 12, /* Memory that is being paged in */
     p2m_ram_shared = 13,          /* Shared or sharable memory */
     p2m_ram_broken  = 14,          /* Broken page, access cause domain crash */
-	p2m_ram_pte_w_lock  =15,      
-//	p2m_ram_pte_r_lock  =15,      
+	p2m_ram_pte_w_lock  = 15,      
+	p2m_ram_pte_rwx_lock  = 16,      
 } p2m_type_t;
 
 /*
@@ -133,6 +133,7 @@ typedef enum {
                        | p2m_to_mask(p2m_ram_paging_in_start) \
                        | p2m_to_mask(p2m_ram_paging_in)       \
                        | p2m_to_mask(p2m_ram_shared)		  \
+                       | p2m_to_mask(p2m_ram_pte_rwx_lock)	  \
                        | p2m_to_mask(p2m_ram_pte_w_lock))
 
 /* Grant mapping types, which map to a real machine frame in another

@@ -67,7 +67,7 @@ unsigned long check_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_si
  * valid_bit=0 => in swap
  * valid_bit=1 => is valid
  * */
-int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsigned long offset, char valid_bit, char huge_bit, char privilege_bit, char exec_bit, unsigned long *no_lock_list, int *set_em_bit)
+int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsigned long offset, char valid_bit, char huge_bit, unsigned long *no_lock_list, int *set_em_bit)
 {
 	unsigned long vkey, paddr;
 	char val, tmp;
@@ -137,21 +137,31 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 		}
 
 
-		unsigned long range_start = 0x7f9c4f900010;
-		unsigned long range_end = 0x7f9c94500008;
 
 
-		/*set extra memory*/
+		/************set extra memory****************/
 		int temp_change_times = 0;
 		int tmp;
+		char write_bit = get_bit(gw->l1e, 1, 1);
+		char privilege_bit = get_bit(gw->l1e, 1, 2);
+		char exec_bit = get_bit(gw->l1e, 1, 63);
+		unsigned long gfn;
+		gfn = (unsigned long)(gw->l2e);
+		gfn >>= 12;
+
+		unsigned long range_start = 0x7f2853c7a000;
+		unsigned long range_end = 0x7f286047b000;
+
 		temp_change_times = get_change_number(val_ref);
 		if(temp_change_times >= CHANGE_LIMIT && valid_bit == 1 
+//				&& privilege_bit == 1 && gfn >= 0x2000 && gfn <= 0x40000 && write_bit)
+//				&& privilege_bit == 1 && gfn >= 0x2000 && gfn <= 0x40000 )
 				&& privilege_bit == 1 && vkey >= range_start && vkey <= range_end)
 		{
 			no_lock_list[offset] = 0;
 			*set_em_bit = 1;
 		}
-
+		/************set extra memory****************/
 
 		if(val!=valid_bit){
 			val_ref &= 0xfe;
@@ -268,20 +278,18 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 						if( gw.va == 0 )
 							continue;
 
-						char privilege_bit = get_bit(gw.l1e, 1, 2);
-						char exec_bit = get_bit(gw.l1e, 1, 63);
 						if( !pte_entry_valid(gw.l1e))
 						{
 							count++;
 							int ret;
-							ret = compare_swap(table, &gw, l1offset, 0, 0, privilege_bit, exec_bit, no_lock_list, &set_em_bit);
+							ret = compare_swap(table, &gw, l1offset, 0, 0, no_lock_list, &set_em_bit);
 						}
 						else
 						{
 							int ret;
 							//total_valid_calculate( (((gw.l1e)>>12)&ADDR_MASK ), table->total_valid_pages);
 							(table->total_valid_pages)++;  						
-							ret = compare_swap(table, &gw, l1offset, 1, 0, privilege_bit, exec_bit, no_lock_list, &set_em_bit);
+							ret = compare_swap(table, &gw, l1offset, 1, 0, no_lock_list, &set_em_bit);
 							total++;
 						}
 					}	 
@@ -289,7 +297,8 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 					l1p = NULL;
 
 					/*set extra memory*/
-					if( total_map_2MB < 200 && set_em_bit)
+//					if( total_map_2MB < 500 && set_em_bit)
+					if( total_map_2MB < 500 && set_em_bit)
 					{
 						unsigned long gfn;
 						gfn = (unsigned long)(gw.l2e);
