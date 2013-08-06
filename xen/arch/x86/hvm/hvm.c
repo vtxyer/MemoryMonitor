@@ -1213,14 +1213,8 @@ RETRY:
                  ctxt.insn_buf[2], ctxt.insn_buf[3],
                  ctxt.insn_buf[4], ctxt.insn_buf[5]);
 		vmx_inject_hw_exception(TRAP_invalid_op, HVM_DELIVER_NO_ERROR_CODE);
-<<<<<<< HEAD
-		if(retry_times >= 10){		
-			domain_pause(p2m->domain);
-			return 0;
-=======
 		if(retry_times >= 10){			
 			return 0; //direct return do not change permission???
->>>>>>> map_page
 		}
 		else{
 			printk("<VT> retry %d\n", retry_times);
@@ -1310,28 +1304,16 @@ int restore_page_value(struct vcpu *v, struct p2m_domain *p2m, struct cpu_user_r
 	data_page_paddr = ((node->extra_map_mfn[offset] + v->domain->em_start_gfn)<<12);
 	data_content = (unsigned long *)map_guest_paddr(p2m, data_page_paddr);
 	if(data_content == NULL){
-<<<<<<< HEAD
 		printk("<VT>restore data_content map ERROR\n");
 		return 0;
-=======
-		printk("<VT>data_content paddr:%lx map ERROR\n", data_page_paddr);
-		domain_crash(v->domain);
->>>>>>> map_page
 	}
 	new_data_page_paddr = (*pte_content) & 0xfffffffff000;
 	new_data_content = (unsigned long *)map_guest_paddr(p2m, new_data_page_paddr);
 	if(new_data_content == NULL){
-<<<<<<< HEAD
 		printk("<VT>restore new_data_content map ERROR\n");
 		return 0;
 	}
 	memcpy(new_data_content, data_content, 4096);
-=======
-		printk("<VT>new_data_content paddr:%lx map ERROR\n", new_data_page_paddr);
-		domain_crash(v->domain);
-	}
-//	memcpy(new_data_content, data_content, 4096);
->>>>>>> map_page
 
 
 	unmap_domain_page((void *)data_content);
@@ -1345,13 +1327,8 @@ int restore_page_value(struct vcpu *v, struct p2m_domain *p2m, struct cpu_user_r
 
 }
 int run_if_restore_procedure(struct vcpu *v, struct p2m_domain *p2m, struct cpu_user_regs *regs, 
-<<<<<<< HEAD
 		unsigned long *pte_content, struct extra_mem_node *node, uint16_t offset, 
 		unsigned long gpa, unsigned long pre_pte_content, int step)
-=======
-	unsigned long *pte_content, struct extra_mem_node *node, uint16_t offset, unsigned long gpa,
-	int step)
->>>>>>> map_page
 {
 	unsigned int present_bit, pre_present_bit;
 	unsigned long gfn;
@@ -1361,7 +1338,6 @@ int run_if_restore_procedure(struct vcpu *v, struct p2m_domain *p2m, struct cpu_
 	present_bit = (*pte_content) & 0x1;
 	pre_present_bit = pre_pte_content & 0x1;
 
-<<<<<<< HEAD
 	if(present_bit && pre_present_bit== 0){
 //		printk("<VT> restore extra mep page\n");
 		return restore_page_value(v, p2m, regs, pte_content, node, offset, gpa);
@@ -1370,19 +1346,6 @@ int run_if_restore_procedure(struct vcpu *v, struct p2m_domain *p2m, struct cpu_
 		printk("<VT> !!!!!!!step:%u from pre_pte_content:%lx to pte_content:%lx\n",
 				step, pre_pte_content, *pte_content);
 		return refund_data(v->domain, node, offset, gpa);
-=======
-	if(present_bit && step == 5){
-//		printk("<VT> restore extra mep page\n");
-		return restore_page_value(v, p2m, regs, pte_content, node, offset, gpa);
-	}
-	else if(present_bit && step == 4){
-		printk("<VT>!!!!!!!!!!!!!!!!should not HERE!!!!!!!!!!!!!!!!!\n");
-		printk("<VT>!!!!!!!!!!!!!!!!gpa:%lx pte_content:%lx!!!!!!!!!!!!!!!!!\n", 
-				gpa, *pte_content);
-		printk("<VT>!!!!!!!!!!!!!!!!should not HERE!!!!!!!!!!!!!!!!!\n");
-
-		return restore_page_value(v, p2m, regs, pte_content, node, offset, gpa);
->>>>>>> map_page
 	}
 	else{
 		if(*pte_content == 0){
@@ -1477,16 +1440,9 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 		cr3 = v->arch.hvm_vcpu.guest_cr[3];
 		pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);
 		if(pte_content == NULL){
-<<<<<<< HEAD
 			printk("<VT> pte_content map ERROR\n");
 			return 1;
 		}
-=======
-			printk("<VT> pte_content map error\n");
-			domain_crash(d);
-		}
-
->>>>>>> map_page
 		pre_pte_content = *pte_content;
 		pre_present_bit = 0;
 		pre_present_bit = (*pte_content) & 1;
@@ -1536,19 +1492,10 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 			data_page_paddr = (pre_pte_content & 0xfffffffff000);
 			data_content = (unsigned long *)map_guest_paddr(p2m, data_page_paddr);
 			if(data_content == NULL){
-<<<<<<< HEAD
 				printk("<VT> copy data_content map ERROR\n");
 				return 1;
 			}
 			memcpy(new_data_content, data_content, 4096);			
-=======
-				printk("<VT> data_content map ERROR\n");
-				domain_crash(d);
-			}
-//			memcpy(new_data_content, data_content, 4096);			
->>>>>>> map_page
-
-
 			/*change value in extra_mem_node*/
 			spin_lock(&node->em_node_lock);
 //			node->total_lock_num++;
@@ -1566,12 +1513,7 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 		 * 還需要有更多的check  看值是不是改為沒有0x8開頭的PTE content????
 		 * */
 		else if(step == 3 && (*pte_content) != 0 && ((*pte_content)&0x8000000000000000)==0 ){
-<<<<<<< HEAD
 //			printk("<VT> into swap out stage\n");
-=======
-			printk("<VT> %lx into swap out stage\n", gpa);
->>>>>>> map_page
-
 			/*change value in extra_mem_node*/
 			spin_lock(&node->em_node_lock);
 			node->update_pte_val[offset] = *pte_content;
@@ -1591,14 +1533,9 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 		}
 		/*map sucess keep recording or restore procedure*/
 		else if(step == 5 || step == 4){
-<<<<<<< HEAD
 //			printk("<VT> into update rip or restore stage\n");
 			rc = run_if_restore_procedure(v, p2m, regs, pte_content, node, offset, gpa, 
 					pre_pte_content, step);
-=======
-//			printk("<VT> %lx into update rip or restore stage\n", gpa);
-			rc = run_if_restore_procedure(v, p2m, regs, pte_content, node, offset, gpa, step);
->>>>>>> map_page
 			if(rc){
 				p2m_change_type(p2m, gfn, p2m_ram_pte_w_lock, p2m_ram_rw);
 			}
@@ -1638,13 +1575,8 @@ TRY_NEXT_TIME:
 		/* set extar page to PTE */
 		pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);
 		if(pte_content == NULL){
-<<<<<<< HEAD
 			printk("<VT> read loc pte_content map ERROR\n");
 			return 1;
-=======
-			printk("<VT> pte_content map ERROR\n");
-			domain_crash(d);
->>>>>>> map_page
 		}
 		spin_lock(&node->em_node_lock);
 		em_set_step(&(node->step_expireTime[offset]), 4);

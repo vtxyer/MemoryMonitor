@@ -2854,17 +2854,12 @@ int restore_extra_gfn(struct domain *d, struct extra_mem_node *node, unsigned lo
 					printk("<VT> restore_extra_gfn map error\n");
 					return -1;
 				}
-<<<<<<< HEAD
 				ori_val = node->update_pte_val[offset];
 				if((ori_val & 0x1)){
 					printk("<VT> strange ORI_VAL:%lx\n", ori_val);
 				}
 				*src_pte_content = ori_val;
 				
-=======
-//				atomic_set(src_pte_content, node->update_pte_val[offset]);
-				*src_pte_content = node->update_pte_val[offset];	
->>>>>>> map_page
 
 				em_set_step(&(node->step_expireTime[offset]), 5);
 			}
