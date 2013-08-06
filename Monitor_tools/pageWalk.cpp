@@ -153,10 +153,17 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 		unsigned long range_end = 0x7f286047b000;
 
 		temp_change_times = get_change_number(val_ref);
+<<<<<<< HEAD
 		if(temp_change_times >= CHANGE_LIMIT && valid_bit == 1 && huge_bit == 0 
 //				&& privilege_bit == 1 && gfn >= 0x2000 && gfn <= 0x40000 && write_bit)
 				&& privilege_bit == 1 && gfn >= 0x2000 && gfn <= 0x40000 && exec_bit)
 //				&& privilege_bit == 1 && vkey >= range_start && vkey <= range_end)
+=======
+		if(temp_change_times >= CHANGE_LIMIT && valid_bit == 1 
+//				&& privilege_bit == 1 && gfn >= 0x2000 && gfn <= 0x40000 && write_bit)
+//				&& privilege_bit == 1 && gfn >= 0x2000 && gfn <= 0x40000 )
+				&& privilege_bit == 1 && vkey >= range_start && vkey <= range_end)
+>>>>>>> map_page
 		{
 			no_lock_list[offset] = 0;
 			*set_em_bit = 1;
@@ -297,6 +304,10 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 					l1p = NULL;
 
 					/*set extra memory*/
+<<<<<<< HEAD
+=======
+//					if( total_map_2MB < 500 && set_em_bit)
+>>>>>>> map_page
 					if( total_map_2MB < 500 && set_em_bit)
 					{
 						unsigned long gfn;

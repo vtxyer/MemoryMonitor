@@ -2842,7 +2842,7 @@ int restore_extra_gfn(struct domain *d, struct extra_mem_node *node, unsigned lo
 
 	p2m = p2m_get_hostp2m(d);
 	if(node != NULL){
-		spin_lock(&node->em_node_lock);
+//		spin_lock(&node->em_node_lock);
 		for(j=0; j<512; j++){
 			offset = j;
 			gpa = (gfn<<12);
@@ -2854,12 +2854,17 @@ int restore_extra_gfn(struct domain *d, struct extra_mem_node *node, unsigned lo
 					printk("<VT> restore_extra_gfn map error\n");
 					return -1;
 				}
+<<<<<<< HEAD
 				ori_val = node->update_pte_val[offset];
 				if((ori_val & 0x1)){
 					printk("<VT> strange ORI_VAL:%lx\n", ori_val);
 				}
 				*src_pte_content = ori_val;
 				
+=======
+//				atomic_set(src_pte_content, node->update_pte_val[offset]);
+				*src_pte_content = node->update_pte_val[offset];	
+>>>>>>> map_page
 
 				em_set_step(&(node->step_expireTime[offset]), 5);
 			}
@@ -2874,7 +2879,7 @@ int restore_extra_gfn(struct domain *d, struct extra_mem_node *node, unsigned lo
 				node->extra_map_mfn[offset] = 0;
 			}
 		}
-		spin_unlock(&node->em_node_lock);
+//		spin_unlock(&node->em_node_lock);
 	}
 	else{
 		printk("<VT> wrong gfn for em_root\n");
@@ -2902,8 +2907,11 @@ int restore_all_extra_gfn(struct domain *d)
 	}
 	domain_unpause(d);
 	xfree(node);
+	
+	domain_unpause(d);
 	return 0;
 }
+
 
 /************************Radix Tree Routines***************************/
 static struct radix_tree_node *rtn_alloc(void *arg)
@@ -2950,11 +2958,11 @@ int map_gfn(struct domain *d, struct p2m_domain *p2m, unsigned long gfn, unsigne
 			em_set_step(&(node->step_expireTime[i]), 1);
 		}
 		else{
-			node->extra_map_mfn[i] = 0;
-			node->update_pte_val[i] = 0;
 			em_set_step(&(node->step_expireTime[i]), 2);
-			em_set_expireTime(&(node->step_expireTime[i]), d->wait_invalid);
 		}
+		node->extra_map_mfn[i] = 0;
+		node->update_pte_val[i] = 0;
+		em_set_expireTime(&(node->step_expireTime[i]), d->wait_invalid);
 	}
 
 
@@ -3105,8 +3113,6 @@ int do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *b
 			d->wait_invalid = longBuff[0];
 			d->wait_swap_out = longBuff[1];
 			d->wait_restoring = longBuff[2];
-
-			printk("em_total_gfn %lx\n", d->em_total_gfn);
 			break;
 		case 10:
 			/*try to get free page list*/
