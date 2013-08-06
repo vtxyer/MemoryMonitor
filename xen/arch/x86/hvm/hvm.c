@@ -1191,14 +1191,9 @@ int emulate_intr(struct hvm_emulate_ctxt ctxt, struct cpu_user_regs *regs,
 	p2m_type_t from, p2m_type_t to, struct p2m_domain *p2m, unsigned long gfn)
 {
     int rc;
-	int retry_times;
-
-	retry_times = 0;
 
 	p2m_change_type(p2m, gfn, from, p2m_ram_rw);
 
-
-RETRY:
     hvm_emulate_prepare(&ctxt, regs);
     rc = hvm_emulate_one(&ctxt);
     switch ( rc )
@@ -1212,15 +1207,8 @@ RETRY:
                  ctxt.insn_buf[0], ctxt.insn_buf[1],
                  ctxt.insn_buf[2], ctxt.insn_buf[3],
                  ctxt.insn_buf[4], ctxt.insn_buf[5]);
-		vmx_inject_hw_exception(TRAP_invalid_op, HVM_DELIVER_NO_ERROR_CODE);
-		if(retry_times >= 10){			
-			return 0; //direct return do not change permission???
-		}
-		else{
-			printk("<VT> retry %d\n", retry_times);
-			retry_times++;
-			goto RETRY;
-		}
+//		vmx_inject_hw_exception(TRAP_invalid_op, HVM_DELIVER_NO_ERROR_CODE);
+		return 1; //already change permission to RWX
 		break;
     case X86EMUL_EXCEPTION:
 		printk("<VT> X86EMUL_EXCEPTION\n");
@@ -1418,7 +1406,17 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
     mfn = gfn_to_mfn_type_current(p2m, gfn, &p2mt, &p2ma, p2m_guest);
 
 	/*<VT> add*/
-	if(p2mt == p2m_ram_pte_w_lock){
+	if(p2mt == p2m_ram_pte_w_lock || 
+		(v->arch.hvm_vcpu.single_step == 1  && v->domain->emulate_err_point == 1) ){
+
+		pre_present_bit = 0;
+		pre_pte_content = 0;
+		if(v->arch.hvm_vcpu.single_step == 1){
+			v->domain->pre_gpa = 0;
+			pre_pte_content = v->domain->pre_pte_content;
+			pre_present_bit = pre_pte_content & 1;
+		}
+
 		node = radix_tree_lookup(&d->em_root, gfn);
 		if(node == NULL){
 			printk("<VT>ERROR: into violation but gfn is null\n");
@@ -1443,15 +1441,22 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 			printk("<VT> pte_content map ERROR\n");
 			return 1;
 		}
-		pre_pte_content = *pte_content;
-		pre_present_bit = 0;
-		pre_present_bit = (*pte_content) & 1;
 
 		/* Emulate X86 instruction or change to update rip??*/
-		rc = emulate_intr(ctxt, regs, p2m_ram_pte_w_lock, p2m_ram_pte_w_lock, p2m ,gfn);
-		if(rc){
-			printk("<VT> Emulate error\n");
-			domain_crash(d);
+		if(!(v->arch.hvm_vcpu.single_step)){
+			pre_pte_content = *pte_content;
+			pre_present_bit = 0;
+			pre_present_bit = (*pte_content) & 1;
+			rc = emulate_intr(ctxt, regs, p2m_ram_pte_w_lock, p2m_ram_pte_w_lock, p2m ,gfn);
+			if(rc){
+				/*here already change permission to RWX*/
+				printk("<VT> w_lock Emulate error\n");
+				v->arch.hvm_vcpu.single_step = 1;		
+				d->pre_pte_content = pre_pte_content;
+				d->pre_gpa = gpa;
+				d->emulate_err_point = 1;
+				return 1;
+			}
 		}
 		present_bit = (*pte_content) & 0x1;
 
@@ -1461,7 +1466,7 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 //
 		/*PTE from 1->0, their two step s this the first */
 		if(step == 2 && pre_present_bit == 1 && present_bit == 0 ){
-			printk("<VT> %lx PTE 1->0\n", gpa);
+//			printk("<VT> %lx PTE 1->0\n", gpa);
 
 			/*get free page*/
 			spin_lock(&d->em_free_list_lock);
@@ -1556,7 +1561,12 @@ TRY_NEXT_TIME:
 	}
 
 
-	if(p2mt == p2m_ram_ro){
+	if(p2mt == p2m_ram_ro && 
+		(v->arch.hvm_vcpu.single_step == 1  && v->domain->emulate_err_point == 2)){
+
+		if(v->arch.hvm_vcpu.single_step == 1 ){
+			v->domain->pre_gpa = 0;
+		}
 		printk("<VT> %lx into read lock\n", gpa);
 		node = radix_tree_lookup(&d->em_root, gfn);
 		if(node == NULL){
@@ -1567,10 +1577,16 @@ TRY_NEXT_TIME:
 		offset /= 8;
 
 		/* Emulate X86 instruction*/
-		rc = emulate_intr(ctxt, regs, p2m_ram_ro, p2m_ram_pte_w_lock, p2m, gfn);
-		if(rc){
-			printk("<VT> Emulate error\n");
-			domain_crash(d);
+		if(!(v->arch.hvm_vcpu.single_step)){
+			rc = emulate_intr(ctxt, regs, p2m_ram_ro, p2m_ram_pte_w_lock, p2m, gfn);
+			if(rc){
+				printk("<VT> Emulate error\n");
+				v->arch.hvm_vcpu.single_step = 1;		
+				d->pre_pte_content = 0;
+				d->pre_gpa = gpa;
+				d->emulate_err_point = 2;
+				return 1;
+			}
 		}
 		/* set extar page to PTE */
 		pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);

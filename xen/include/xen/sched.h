@@ -374,6 +374,9 @@ struct domain
 	unsigned long em_start_gfn;	
 	unsigned long em_total_gfn; //number of Memory_size/2MB	
 	unsigned long em_total_map_pages;
+	unsigned long pre_gpa;
+	unsigned long pre_pte_content;
+	int emulate_err_point;
 };
 
 

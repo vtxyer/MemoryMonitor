@@ -2634,7 +2634,16 @@ asmlinkage void vmx_vmexit_handler(struct cpu_user_regs *regs)
         vmx_update_cpu_exec_control(v);
         if ( v->arch.hvm_vcpu.single_step ) {
           hvm_memory_event_single_step(regs->eip);
-          if ( v->domain->debugger_attached )
+
+		  /*<VT> add for emaulating failed*/
+		  if( v->domain->pre_gpa != 0 ) {
+		  	v->arch.hvm_vcpu.single_step = 0;	
+			p2m_change_type( p2m_get_hostp2m(v->domain), (v->domain->pre_gpa)>>12, 
+						p2m_ram_rw, p2m_ram_pte_w_lock);
+			hvm_hap_nested_page_fault( (v->domain->pre_gpa), 1, 0, 1, 1, 1, 1);
+			printk("<VT>into single step\n");
+		  }
+          else if ( v->domain->debugger_attached )
               domain_pause_for_debugger();
         }
 
@@ -2753,10 +2762,19 @@ static int add_mfn_to_list(struct domain *d, unsigned long mfn)
 {
 	struct em_free_list *new_node;
 	struct page_info *page;
+	struct domain *page_owner;
 	
 	page = mfn_to_page(mfn_x(mfn));
+	if(page == NULL){
+		printk("<VT> mfn %lx cannot get page\n", mfn);
+		return 0;
+	}
+	page_owner = page_get_owner(page);
+	if(page_owner->domain_id != 1){
+		printk("<VT> mfn:%lx owner is %d\n", mfn, page_owner->domain_id);
+	}
 	page_set_owner(page, d);
-	page->count_info |= 1;
+	page->count_info = 2;
 
 	new_node = xmalloc_array(struct em_free_list, 1);
 	if(new_node == NULL){

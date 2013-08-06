@@ -27,7 +27,8 @@ using namespace std;
 #define EM_WAIT_SWAP_OUT 5
 #define EM_WAIT_RESTORING 50
 
-#define FREESIZE 512*4096*200
+#define M 256*4096
+#define FREESIZE M*500
 
 typedef unsigned long addr_t;
 typedef unsigned long mfn_t;

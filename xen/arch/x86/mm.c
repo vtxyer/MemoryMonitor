@@ -848,16 +848,22 @@ get_page_from_l1e(
         if ( (real_pg_owner == NULL) || (pg_owner == l1e_owner) ||
              !IS_PRIV_FOR(pg_owner, real_pg_owner) ){
 //        if ( (pg_owner == l1e_owner) ){
-			if(real_pg_owner == NULL)
-				MEM_LOG("real_pg_owner == NULL\n");
-			else if(!IS_PRIV_FOR(pg_owner, real_pg_owner))
-				MEM_LOG("!IS_PRIV_FOR\n");
+			if(real_pg_owner == NULL){
+				MEM_LOG("<VT>real_pg_owner == NULL\n");
+				real_pg_owner = pg_owner;
+				page->count_info = 1;
+				page_set_owner(page, pg_owner);
+			}
+			else if(!IS_PRIV_FOR(pg_owner, real_pg_owner)){
+				MEM_LOG("<VT>!IS_PRIV_FOR\n");
+			}
 			else if(pg_owner == l1e_owner){
-				MEM_LOG("pg_owner == l1e_owner\n");
+				MEM_LOG("<VT>pg_owner == l1e_owner\n");
 	            goto could_not_pin;
 			}
 		}
-        pg_owner = real_pg_owner;
+		else
+	        pg_owner = real_pg_owner;
     }
 
     /* Foreign mappings into guests in shadow external mode don't
@@ -1215,7 +1221,8 @@ static int alloc_l1_table(struct page_info *page)
 
     for ( i = 0; i < L1_PAGETABLE_ENTRIES; i++ )
     {
-        if ( is_guest_l1_slot(i) )
+        if ( is_guest_l1_slot(i) ) {
+//			printk("<VT> into alloc_l1_table\n");
             switch ( get_page_from_l1e(pl1e[i], d, d) )
             {
             case 0:
@@ -1224,6 +1231,7 @@ static int alloc_l1_table(struct page_info *page)
                 l1e_remove_flags(pl1e[i], _PAGE_RW);
                 break;
             }
+		}
 
         adjust_guest_l1e(pl1e[i], d);
     }
@@ -1807,6 +1815,7 @@ static int mod_l1_entry(l1_pgentry_t *pl1e, l1_pgentry_t nl1e,
             return rc;
         }
 
+//		printk("<VT> into mod_l1_entry\n");
         switch ( get_page_from_l1e(nl1e, pt_dom, pg_dom) )
         {
         case 0:
@@ -4959,6 +4968,7 @@ static int ptwr_emulated_update(
 
     /* Check the new PTE. */
     nl1e = l1e_from_intpte(val);
+//	printk("<VT> into ptwr_emulated_update\n");
     switch ( get_page_from_l1e(nl1e, d, d) )
     {
     case 0:

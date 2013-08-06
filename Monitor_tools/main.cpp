@@ -108,7 +108,6 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-//	start_mapping_hypercall(gpa, unmap_offset, fd);
 	/*******************TEST EXTRA MAP**************************/
 
 
