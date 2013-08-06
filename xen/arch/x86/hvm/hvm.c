@@ -1127,7 +1127,11 @@ static void* map_guest_paddr(struct p2m_domain *p2m, unsigned long gpa)
 	p2m_type_t pt;
 
 	mask = 0xfff;
-	mfn = p2m->get_entry(p2m, gpa>>PAGE_SHIFT, &pt, &a, 0);
+	mfn = p2m->get_entry(p2m, (gpa>>PAGE_SHIFT), &pt, &a, 0);
+	if(!mfn_valid(mfn) || mfn == INVALID_MFN){
+		printk("<VT>gpa:%lx get wrong MFN %lx\n", gpa, mfn);
+		return NULL;
+	}
 	return map_domain_page(mfn_x(mfn)) + (gpa & mask);
 }
 
@@ -1200,15 +1204,17 @@ RETRY:
     switch ( rc )
     {
     case X86EMUL_UNHANDLEABLE:
-        printk(  "<VT> emulation failed @ %04x:%lx: "
+        printk(  "<VT> gfn:%lx emulation failed @ %04x:%lx: "
                  "%02x %02x %02x %02x %02x %02x\n",
+				 gfn,
                  hvmemul_get_seg_reg(x86_seg_cs, &ctxt)->sel,
                  ctxt.insn_buf_eip,
                  ctxt.insn_buf[0], ctxt.insn_buf[1],
                  ctxt.insn_buf[2], ctxt.insn_buf[3],
                  ctxt.insn_buf[4], ctxt.insn_buf[5]);
 		vmx_inject_hw_exception(TRAP_invalid_op, HVM_DELIVER_NO_ERROR_CODE);
-		if(retry_times >= 10){			
+		if(retry_times >= 10){		
+			domain_pause(p2m->domain);
 			return 0;
 		}
 		else{
@@ -1294,8 +1300,16 @@ int restore_page_value(struct vcpu *v, struct p2m_domain *p2m, struct cpu_user_r
 	/*copy page content*/
 	data_page_paddr = ((node->extra_map_mfn[offset] + v->domain->em_start_gfn)<<12);
 	data_content = (unsigned long *)map_guest_paddr(p2m, data_page_paddr);
+	if(data_content == NULL){
+		printk("<VT>restore data_content map ERROR\n");
+		return 0;
+	}
 	new_data_page_paddr = (*pte_content) & 0xfffffffff000;
 	new_data_content = (unsigned long *)map_guest_paddr(p2m, new_data_page_paddr);
+	if(new_data_content == NULL){
+		printk("<VT>restore new_data_content map ERROR\n");
+		return 0;
+	}
 	memcpy(new_data_content, data_content, 4096);
 
 
@@ -1307,18 +1321,25 @@ int restore_page_value(struct vcpu *v, struct p2m_domain *p2m, struct cpu_user_r
 
 }
 int run_if_restore_procedure(struct vcpu *v, struct p2m_domain *p2m, struct cpu_user_regs *regs, 
-		unsigned long *pte_content, struct extra_mem_node *node, uint16_t offset, unsigned long gpa)
+		unsigned long *pte_content, struct extra_mem_node *node, uint16_t offset, 
+		unsigned long gpa, unsigned long pre_pte_content, int step)
 {
-	unsigned int present_bit;
+	unsigned int present_bit, pre_present_bit;
 	unsigned long gfn;
 
 	gfn = gpa >> 12;
 	present_bit = 0;
 	present_bit = (*pte_content) & 0x1;
+	pre_present_bit = pre_pte_content & 0x1;
 
-	if(present_bit){
+	if(present_bit && pre_present_bit== 0){
 //		printk("<VT> restore extra mep page\n");
 		return restore_page_value(v, p2m, regs, pte_content, node, offset, gpa);
+	}
+	else if(present_bit && pre_present_bit){
+		printk("<VT> !!!!!!!step:%u from pre_pte_content:%lx to pte_content:%lx\n",
+				step, pre_pte_content, *pte_content);
+		return refund_data(v->domain, node, offset, gpa);
 	}
 	else{
 		if(*pte_content == 0){
@@ -1332,7 +1353,7 @@ int run_if_restore_procedure(struct vcpu *v, struct p2m_domain *p2m, struct cpu_
 			*pte_content = 0x8000000000000000 + 
 					(node->extra_map_mfn[offset] + v->domain->em_start_gfn) + 0x067;
 			spin_unlock(&node->em_node_lock);
-//			printk("<VT> into restore procedure but there are not resume present bit\n");
+			printk("<VT> into restore procedure but there are not resume present bit\n");
 			return 0;
 		}
 	}
@@ -1342,7 +1363,9 @@ int run_if_restore_procedure(struct vcpu *v, struct p2m_domain *p2m, struct cpu_
 int set_extra_gfn_to_ept(struct p2m_domain *p2m, unsigned long gfn, unsigned long mfn)
 {
 	int ret;
+	p2m_lock(p2m);
 	ret = p2m->set_entry(p2m, gfn, mfn, 0, p2m_ram_rw, p2m_access_rw);
+	p2m_unlock(p2m);
 	if(ret == 0){
 		printk("<VT> EPT set_entry error\n");
 		return -1;
@@ -1400,8 +1423,17 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 		step = em_get_step(node->step_expireTime[offset]);
 		spin_unlock(&node->em_node_lock);
 
+		if(gfn > d->tot_pages){
+			printk("<VT> wrong gfn %lx\n", gfn);
+			domain_crash(d);
+		}
+
 		cr3 = v->arch.hvm_vcpu.guest_cr[3];
 		pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);
+		if(pte_content == NULL){
+			printk("<VT> pte_content map ERROR\n");
+			return 1;
+		}
 		pre_pte_content = *pte_content;
 		pre_present_bit = 0;
 		pre_present_bit = (*pte_content) & 1;
@@ -1450,6 +1482,10 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 			}
 			data_page_paddr = (pre_pte_content & 0xfffffffff000);
 			data_content = (unsigned long *)map_guest_paddr(p2m, data_page_paddr);
+			if(data_content == NULL){
+				printk("<VT> copy data_content map ERROR\n");
+				return 1;
+			}
 			memcpy(new_data_content, data_content, 4096);			
 
 
@@ -1470,11 +1506,10 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 		 * 還需要有更多的check  看值是不是改為沒有0x8開頭的PTE content????
 		 * */
 		else if(step == 3 && (*pte_content) != 0 && ((*pte_content)&0x8000000000000000)==0 ){
-			printk("<VT> into swap out stage\n");
+//			printk("<VT> into swap out stage\n");
 
 			/*change value in extra_mem_node*/
 			spin_lock(&node->em_node_lock);
-			em_set_step(&(node->step_expireTime[offset]), 4);
 			node->update_pte_val[offset] = *pte_content;
 			spin_unlock(&node->em_node_lock);
 
@@ -1482,19 +1517,17 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 			p2m_change_type(p2m, gfn, p2m_ram_pte_w_lock, p2m_ram_paged);
 		}
 		else if(step == 3 && (*pte_content) == 0 ){
-			printk("<VT> into write step=3 pte_content but not swap out => refund\n");
+//			printk("<VT> into write step=3 pte_content but not swap out => refund\n");
 			rc = refund_data(d, node, offset, gpa);
 			if(rc){
 				p2m_change_type(p2m, gfn, p2m_ram_pte_w_lock, p2m_ram_rw);
-			}
-			else{
-				unmap_domain_page((void *)pte_content);
 			}
 		}
 		/*map sucess keep recording or restore procedure*/
 		else if(step == 5 || step == 4){
 //			printk("<VT> into update rip or restore stage\n");
-			rc = run_if_restore_procedure(v, p2m, regs, pte_content, node, offset, gpa);
+			rc = run_if_restore_procedure(v, p2m, regs, pte_content, node, offset, gpa, 
+					pre_pte_content, step);
 			if(rc){
 				p2m_change_type(p2m, gfn, p2m_ram_pte_w_lock, p2m_ram_rw);
 			}
@@ -1532,8 +1565,12 @@ TRY_NEXT_TIME:
 		}
 		/* set extar page to PTE */
 		pte_content = (unsigned long *)map_guest_paddr(p2m, gpa);
-
+		if(pte_content == NULL){
+			printk("<VT> read loc pte_content map ERROR\n");
+			return 1;
+		}
 		spin_lock(&node->em_node_lock);
+		em_set_step(&(node->step_expireTime[offset]), 4);
 		extra_gfn =  ( (node->extra_map_mfn[offset]) + v->domain->em_start_gfn);
 		spin_unlock(&node->em_node_lock);
 		*pte_content = 0x8000000000000000 + (extra_gfn<<12) + 0x067;

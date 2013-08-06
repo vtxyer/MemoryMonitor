@@ -845,16 +845,17 @@ get_page_from_l1e(
          * dom0, until pvfb supports granted mappings. At that time this
          * minor hack can go away.
          */
-//        if ( (real_pg_owner == NULL) || (pg_owner == l1e_owner) ||
-//             !IS_PRIV_FOR(pg_owner, real_pg_owner) )
-        if ( (pg_owner == l1e_owner) ){
+        if ( (real_pg_owner == NULL) || (pg_owner == l1e_owner) ||
+             !IS_PRIV_FOR(pg_owner, real_pg_owner) ){
+//        if ( (pg_owner == l1e_owner) ){
 			if(real_pg_owner == NULL)
 				MEM_LOG("real_pg_owner == NULL\n");
 			else if(!IS_PRIV_FOR(pg_owner, real_pg_owner))
 				MEM_LOG("!IS_PRIV_FOR\n");
-			else if(pg_owner == l1e_owner)
+			else if(pg_owner == l1e_owner){
 				MEM_LOG("pg_owner == l1e_owner\n");
-            goto could_not_pin;
+	            goto could_not_pin;
+			}
 		}
         pg_owner = real_pg_owner;
     }

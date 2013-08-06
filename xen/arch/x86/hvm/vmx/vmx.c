@@ -2752,12 +2752,18 @@ static void em_set_expireTime(uint16_t *node, int val){
 static int add_mfn_to_list(struct domain *d, unsigned long mfn)
 {
 	struct em_free_list *new_node;
+	struct page_info *page;
+	
+	page = mfn_to_page(mfn_x(mfn));
+	page_set_owner(page, d);
+	page->count_info |= 1;
 
 	new_node = xmalloc_array(struct em_free_list, 1);
 	if(new_node == NULL){
 		printk("<VT> ERROR cannot alloc em_free_list node\n");
 		goto ERROR;
 	}
+
 	new_node->mfn = mfn;
 
 	spin_lock(&d->em_free_list_lock);
@@ -2796,7 +2802,10 @@ unsigned long va_to_mfn(struct vcpu *v, unsigned long cr3, unsigned long gva)
 	}
 	gfn = guest_l1e_get_gfn(gw.l1e);
 	mfn = p2m->get_entry(p2m, gfn, &pt, &a, 0);
-
+	if(!mfn_valid(mfn)){
+		printk("<VT> get wrong MFN\n");
+		return INVALID_MFN;
+	}
 	if(mfn==INVALID_MFN){
 		printk("<VT> get error mfn\n");
 		return INVALID_MFN;
@@ -2814,6 +2823,10 @@ void* map_guest_paddr(struct p2m_domain *p2m, unsigned long gpa)
 
 	mask = 0xfff;
 	mfn = p2m->get_entry(p2m, gpa>>PAGE_SHIFT, &pt, &a, 0);
+	if(!mfn_valid(mfn)){
+		printk("<VT> get wrong MFN\n");
+		return NULL;
+	}
 	return map_domain_page(mfn_x(mfn)) + (gpa & mask);
 }
 
@@ -2824,6 +2837,7 @@ int restore_extra_gfn(struct domain *d, struct extra_mem_node *node, unsigned lo
 	unsigned long j;
 	int step, offset;
 	unsigned long gpa;
+	unsigned long ori_val;
 
 
 	p2m = p2m_get_hostp2m(d);
@@ -2840,7 +2854,12 @@ int restore_extra_gfn(struct domain *d, struct extra_mem_node *node, unsigned lo
 					printk("<VT> restore_extra_gfn map error\n");
 					return -1;
 				}
-				*src_pte_content = node->update_pte_val[offset];	
+				ori_val = node->update_pte_val[offset];
+				if((ori_val & 0x1)){
+					printk("<VT> strange ORI_VAL:%lx\n", ori_val);
+				}
+				*src_pte_content = ori_val;
+				
 
 				em_set_step(&(node->step_expireTime[offset]), 5);
 			}
@@ -2870,7 +2889,7 @@ int restore_all_extra_gfn(struct domain *d)
 	unsigned long i;
 	int num_restore;
 	struct extra_mem_node **node;
-	
+	domain_pause(d);
 	node = (struct extra_mem_node **)xmalloc_array(struct extra_mem_node *, d->em_total_gfn);
 	num_restore = radix_tree_gang_lookup(&d->em_root, (void **)node, 0, d->em_total_gfn);
 	for(i=0; i<num_restore; i++){
@@ -2881,6 +2900,7 @@ int restore_all_extra_gfn(struct domain *d)
 			}
 		}
 	}
+	domain_unpause(d);
 	xfree(node);
 	return 0;
 }
