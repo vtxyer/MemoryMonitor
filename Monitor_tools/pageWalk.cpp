@@ -31,7 +31,11 @@ int check_cr3(DATAMAP &list, unsigned long cr3)
 		return 0;
 	}
 	else{
-		return 1;
+		if( it->second.pte_data.empty() ){
+			return 0;
+		}
+		else
+			return 1;
 	}
 
 }
@@ -83,8 +87,8 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 
 
 	/*insert into each process map*/
-	it = table->h.find(vkey);
-	if(it == table->h.end()){
+	it = table->pte_data.find(vkey);
+	if(it == table->pte_data.end()){
 		mapData mapVal;
 		mapVal.present_times = valid_bit;
 
@@ -97,12 +101,12 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 		save_huge_bit(mapVal.paddr, huge_bit);
 		set_change_bit(mapVal.paddr, true);
 
-		table->h.insert(map<unsigned long, mapData>::value_type(vkey, mapVal));
+		table->pte_data.insert(map<unsigned long, mapData>::value_type(vkey, mapVal));
 		ret = 0;
 	}
 	else{
-		char &val_ref = table->h[vkey].present_times;	
-		unsigned long &paddr_val = table->h[vkey].paddr;
+		char &val_ref = table->pte_data[vkey].present_times;	
+		unsigned long &paddr_val = table->pte_data[vkey].paddr;
 
 		if(valid_bit == 1){
 			save_paddr(paddr_val, paddr);
@@ -233,6 +237,18 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 						if( gw.va == 0 )
 							continue;
 
+						/*
+						 * The page is freed, we don't have to count into
+						 * But there are some problem with shared memory if we didn't count it??????????
+						 */
+						map<unsigned long, mapData>::iterator tmp_it;
+						tmp_it = table->pte_data.find(gw.va);
+						unsigned long paddr = get_paddr(tmp_it->second.paddr);
+						if(gw.l1e == 0 && paddr != 0 ){
+							table->pte_data.erase( tmp_it );
+							continue;
+						}
+
 						if( !pte_entry_valid(gw.l1e))
 						{
 							count++;
@@ -260,7 +276,10 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 	}
 	else{
 		/*bus error*/
-		table->h.clear();		
+		table->pte_data.clear();
+
+
+
 		if(l1p != NULL)
 			munmap(l1p, XC_PAGE_SIZE);
 		if(l2p != NULL)
@@ -275,7 +294,7 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 	return count;
 
 BUSERR:
-	table->h.clear();
+
 	//	if(table->non2s != 0)
 	//		printf("###All_pages:%lu swap_page:%lu non2s:%lu s2non:%lu total_page: %lu hugepage_counter:%u cr3:%lx###\n", 
 	//				total, count, table->non2s, table->s2non, table->total_valid_pages, hugepage_counter, dtb);
@@ -298,30 +317,28 @@ int walk_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size,  unsign
 }
 
 /*retrieve cr3 list for long time no used*/
-int retrieve_list(DATAMAP &list, unsigned int round)
+int retrieve_list(DATAMAP &list)
 {
 	DATAMAP::iterator it = list.begin();
 	int retrieve_cr3_number = 0, interval;
 	unsigned int max_int = -1;
+
+
 	while(it != list.end())
 	{
 		struct hash_table &h = it->second;
-		if(round > h.round){
-			interval = round - h.round;
+		if(round > h.end_round){
+			interval = round - h.end_round;
 		}
 		else{
-			interval = max_int - h.round + round;	
+			interval = max_int - h.end_round + round;	
 		}
 
 		if(interval >= MAX_ROUND_INTERVAL){
-			DATAMAP::iterator erase_node = it;
-			it++;
-			list.erase(erase_node);
+			h.pte_data.clear();
 			retrieve_cr3_number++;
 		}
-		else{
-			it++;
-		}
+		it++;
 	}
 
 	return retrieve_cr3_number;
@@ -335,8 +352,8 @@ static void estimate_bottleneck_set(SHARED_TREE *system_map, int valid_bit,
 	/*The page is shared with each other*/
 	if(system_map->count(sharedID) > 0){
 		if(tmp_max_change_times[sharedID] < change_times){
-			total_change_times -= tmp_max_change_times[sharedID];
-			total_change_times += change_times;
+//			total_change_times -= tmp_max_change_times[sharedID];
+//			total_change_times += change_times;
 			tmp_max_change_times[sharedID] = change_times;
 		}
 		system_map->at(sharedID).add_share_relation(cr3);
@@ -344,8 +361,8 @@ static void estimate_bottleneck_set(SHARED_TREE *system_map, int valid_bit,
 	/*Page is not shared*/
 	else{
 		Shared_page_node shared_node;
-		system_map->insert(pair<sharedID_t, Shared_page_node>(sharedID, shared_node));
-		system_map->at(sharedID).add_share_relation(cr3);
+//		system_map->insert(pair<sharedID_t, Shared_page_node>(sharedID, shared_node));
+//		system_map->at(sharedID).add_share_relation(cr3);
 		tmp_max_change_times[sharedID] = change_times;
 		total_change_times += change_times;
 		if(huge_bit == 0){
@@ -374,9 +391,12 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 		addr_t paddr;
 		check_cr3_num++;
 
-		HASHMAP::iterator hashIt = h.h.begin();
+		HASHMAP::iterator hashIt = h.pte_data.begin();
 		(h.activity_page)[0] = (h.activity_page)[1] = (h.activity_page)[2] = 0;
-		while(hashIt != h.h.end()){
+
+		if(h.check == 1){
+
+		while(hashIt != h.pte_data.end()){	
 			byte valid_bit = (hashIt->second.present_times) & 1;
 			byte val_ref = hashIt->second.present_times;
 			char huge_bit = get_huge_bit(hashIt->second.paddr);
@@ -418,6 +438,8 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 
 			hashIt++;
 		}//end walk each page for CR3
+
+		}//end if h.check
 
 		sample_result[round].cr3_info[cr3] = h.activity_page[0];
 		result[0] += h.activity_page[0];

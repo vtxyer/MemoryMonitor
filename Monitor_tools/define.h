@@ -19,7 +19,7 @@ extern "C"{
 using namespace std;
 
 #define CHANGE_LIMIT 1
-#define MAX_ROUND_INTERVAL 999
+#define MAX_ROUND_INTERVAL 5 
 #define ADDR_MASK 0x0000ffffffffffff
 #define RECENT_CR3_SIZE 50
 
@@ -42,8 +42,8 @@ struct mapData
 	byte present_times;
 
 	/*
-	 * valid_bit==1 -> [63:63]:bool for is_change_times_add, [62:28]:paddr, [0:0]:huge_bit
-	 * valid_bit==0 -> [63:63]:bool for is_change_times_add, [62:28]:paddr, [27:1]:swap_paddr, [0:0]huge_bit
+	 * valid_bit==1 -> [63:63]:bool for is_change_times_change, [62:28]:paddr, [0:0]:huge_bit
+	 * valid_bit==0 -> [63:63]:bool for is_change_times_change, [62:28]:paddr, [27:1]:swap_paddr, [0:0]huge_bit
 	 * */
 	unsigned long paddr;
 };
@@ -52,9 +52,8 @@ typedef map<unsigned long, mapData> HASHMAP;
 
 struct hash_table
 {
-	map<unsigned long, mapData> h; //bit 0=>valid_bit, 1~8 => counter
+	map<unsigned long, mapData> pte_data; //bit 0=>valid_bit, 1~8 => counter
 	unsigned long activity_page[2];//0->invalid, 1->valid
-	unsigned int round;
 	unsigned long start_round, end_round;
 	byte check;
 };
@@ -174,7 +173,7 @@ void check_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size);
 int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsigned long offset, char valid_bit, char huge_bit);
 unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest_pagetable_walk &gw);
 int walk_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size,  unsigned int round, struct guest_pagetable_walk &gw);
-int retrieve_list(DATAMAP &list, unsigned int round);
+int retrieve_list(DATAMAP &list);
 struct page_data{unsigned long owner; unsigned long max_change_times;};
 unsigned long calculate_all_page(DATAMAP &list, unsigned long *result);
 
