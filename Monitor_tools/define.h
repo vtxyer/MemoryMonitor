@@ -15,6 +15,7 @@ extern "C"{
 #include <setjmp.h>
 }
 #include <map>
+#include <list>
 using namespace std;
 
 #define CHANGE_LIMIT 1
@@ -26,8 +27,12 @@ using namespace std;
 typedef unsigned long addr_t;
 typedef unsigned long mfn_t;
 typedef char byte;
+typedef unsigned long cr3_t;
+typedef unsigned long sharedID_t;
+typedef unsigned int round_t;
 typedef map<unsigned long, struct hash_table> DATAMAP;
 typedef map<unsigned long, unsigned long> SYSTEM_MAP;
+typedef list<cr3_t> CR3_LIST;
 
 struct mapData
 {
@@ -37,8 +42,8 @@ struct mapData
 	byte present_times;
 
 	/*
-	 * valid_bit==1 -> [63:63]:bool for change_times add, [62:28]:paddr, [0:0]:huge_bit
-	 * valid_bit==0 -> [63:63]:bool for change_times add, [62:28]:paddr, [27:1]:swap_paddr, [0:0]huge_bit
+	 * valid_bit==1 -> [63:63]:bool for is_change_times_add, [62:28]:paddr, [0:0]:huge_bit
+	 * valid_bit==0 -> [63:63]:bool for is_change_times_add, [62:28]:paddr, [27:1]:swap_paddr, [0:0]huge_bit
 	 * */
 	unsigned long paddr;
 };
@@ -48,8 +53,6 @@ typedef map<unsigned long, mapData> HASHMAP;
 struct hash_table
 {
 	map<unsigned long, mapData> h; //bit 0=>valid_bit, 1~8 => counter
-	unsigned long cr3;
-	unsigned long change_page, total_valid_pages;
 	unsigned long activity_page[2];//0->invalid, 1->valid
 	unsigned int round;
 	unsigned long start_round, end_round;
@@ -68,55 +71,63 @@ struct guest_pagetable_walk
 	mfn_t l1mfn;                /* MFN that the level 1 entry was in */
 };
 
-class Sampled_process_node
+class Shared_page_node
 {
 public:
-	void add_share_relation(unsigned long target_cr3){
-		if(share_node.count(target_cr3) == 0 ){
-			share_node.insert(std::pair<unsigned long, unsigned long>(target_cr3, 1));
-		}
-		else{
-			unsigned long size = share_node[target_cr3];
-			size += 1;
-			share_node.insert(std::pair<unsigned long, unsigned long>(target_cr3, size));
-		}
+	void add_share_relation(cr3_t target_cr3){
+		shared_cr3_list.push_back(target_cr3);
 	};
-
+	bool is_page_counted(CR3_LIST &scr3_l){
+		CR3_LIST::iterator sIt = scr3_l.begin();
+		CR3_LIST::iterator tIt = shared_cr3_list.begin();
+		while( sIt != scr3_l.end() ) {
+			cr3_t check_cr3 = *sIt;
+			while(tIt != shared_cr3_list.end()){
+				if(check_cr3 == *tIt){
+					shared_cr3_list.erase(tIt);	
+				}
+				tIt++;
+			}
+			sIt++;
+		}
+		if(shared_cr3_list.empty()){
+			return false;
+		}
+		else
+			return true;
+	}
 private:
-	map<unsigned long, unsigned long> share_node;
+	/*shared cr3 list*/
+	CR3_LIST shared_cr3_list;
 };
+
+typedef map<sharedID_t, Shared_page_node> SHARED_TREE;
+/*valud is cr3 bottleneck page numbers*/
+typedef map<cr3_t, unsigned long> CR3_INFO;
 class Sampled_data
 {
 public:
-	void set_value(unsigned long _total, unsigned long _change_times){
-		total_bottleneck_size = _total;
-		total_change_times = _change_times;
+	void set_value(unsigned long _total){
+		total_bottleneck_pages = _total;
 	};
-	void add_process(unsigned long _cr3){
-		Sampled_process_node process_node;
-		process_node_ptr.insert(std::pair<unsigned long, Sampled_process_node>(_cr3, process_node));
+	unsigned long get_value(){
+		return total_bottleneck_pages;
 	};
-	void add_share(unsigned long cr3_1, unsigned long cr3_2){
-		Sampled_process_node &process_node = process_node_ptr[cr3_1];
-		process_node.add_share_relation(cr3_2);
-	};
-
+	SHARED_TREE shared_tree;
+	CR3_INFO cr3_info;
 private:
-	unsigned long total_bottleneck_size;	
-	unsigned long total_change_times;
-	map<unsigned long, Sampled_process_node> process_node_ptr;
+	unsigned long total_bottleneck_pages;
 };
 
 
 /*global variable*/
 extern int domID;
-extern unsigned int round;
+extern round_t round;
 extern SYSTEM_MAP system_map_wks;
-extern SYSTEM_MAP system_map_swap;
-extern map<unsigned int, Sampled_data> sample_result;
+extern map<round_t, Sampled_data> sample_result;
 extern xc_interface *xch4, *xch3, *xch2, *xch1;
 extern sigjmp_buf sigbuf;
-
+extern unsigned long global_total_change_times;
 
 
 /* BitManage */
@@ -155,7 +166,7 @@ void get_cr3_hypercall(unsigned long *cr3_list, int &list_size, int fd);
 /* Page Walk */
 void* map_page(unsigned long pa_base, int level, struct guest_pagetable_walk *gw);
 int check_cr3(DATAMAP &list, unsigned long cr3);
-unsigned long check_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size);
+void check_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size);
 /*
  * valid_bit=0 => in swap
  * valid_bit=1 => is valid

@@ -7,13 +7,12 @@ using namespace std;
 
 fstream fin;
 int domID;
-unsigned int round;
+round_t round;
 SYSTEM_MAP system_map_wks;
-SYSTEM_MAP system_map_swap;
-map<unsigned int, Sampled_data> sample_result;
+map<round_t, Sampled_data> sample_result;
 xc_interface *xch4, *xch3, *xch2, *xch1;
 sigjmp_buf sigbuf;
-
+unsigned long global_total_change_times;
 
 void handler(int sig){
 //	printf("signal bus error\n");
@@ -39,7 +38,7 @@ int file_cr3(unsigned long *cr3_list){
 int main(int argc, char *argv[])  
 { 
 	int fd, ret, i, list_size;  
-	unsigned long cr3, value, os_type, total_change_page, each_change_page;
+	unsigned long cr3, value, os_type, total_change_page;
 	unsigned long offset = 0;
 	struct hash_table global_hash;
 	DATAMAP data_map;
@@ -47,6 +46,7 @@ int main(int argc, char *argv[])
 	unsigned long result[10];
 	struct guest_pagetable_walk gw;
 	
+	global_total_change_times = 0;
 
 	signal(SIGBUS, handler);
 	if(argc<2){
@@ -88,25 +88,20 @@ int main(int argc, char *argv[])
 //		list_size = 1; //limit to size 5
 
 		system_map_wks.clear();
-		system_map_swap.clear();
-	//	system_map_total_valid.clear();
-		total_change_page = each_change_page = result[0] = result[1] = result[2] = 0;;
+		total_change_page = result[0] = result[1] = result[2] = 0;;
 
-		each_change_page = check_cr3_list(data_map, cr3_list, list_size);
+		check_cr3_list(data_map, cr3_list, list_size);
 
 		calculate_all_page(data_map, result);
 
-		printf("InvalidMemory:%lu[M] ValidMemory:%lu[M] Round %d\n\n", 
-					result[0]/256, result[1]/256, round);
+		printf("InvalidMemory:%lu[M] ValidMemory:%lu[M] ChangeTimes:%lu Round %d\n\n", 
+					result[0]/256, result[1]/256, global_total_change_times, round);
 
 		walk_cr3_list(data_map, cr3_list, list_size, round, gw);
 
 
 		round++;
 		retrieve_list(data_map, round);
-
-//		if(ttt==2)
-//			break;
 
 		sleep(2);		
 	}

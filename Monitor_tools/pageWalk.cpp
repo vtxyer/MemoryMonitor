@@ -35,32 +35,27 @@ int check_cr3(DATAMAP &list, unsigned long cr3)
 	}
 
 }
-unsigned long check_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size)
+void check_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size)
 {
-	unsigned long cr3, total_change_page;	
+	unsigned long cr3;	
 	int i, ret;
 
-	total_change_page = 0;
 	for(i=0; i<list_size; i++){
 		cr3 = cr3_list[i];
 		ret = check_cr3(list, cr3);
 		if(ret == 0){
 			struct hash_table tmp;
-			tmp.cr3 = cr3;
-			tmp.change_page = 0;
 			tmp.start_round = round;
 			tmp.end_round = round;
+			tmp.check = 0;
 			list.insert(DATAMAP::value_type(cr3, tmp));
 		}
 		else{
 			struct hash_table &h = list[cr3];
 			h.end_round = round;
 			h.check = 1;
-			total_change_page += h.change_page;	
 		}
 	}
-
-	return total_change_page;
 }
 
 /*
@@ -123,10 +118,6 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 		if( val==1 && valid_bit==0 ){	
 			//			fprintf(stderr, "bit:%x non2s va:%lx\n", val_ref, gw->va);
 			add_change_number(val_ref);
-			tmp = get_change_number(val_ref);			
-			if(tmp >= CHANGE_LIMIT){
-				(table->change_page)++;
-			}
 			ret = 1;
 		}
 		//swap to non-swap bit
@@ -161,8 +152,7 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 	unsigned int hugepage_counter = 0;
 
 
-	table->check = table->change_page = table->activity_page[0] = table->activity_page[1] =
-		table->total_valid_pages = 0;
+	table->check = table->activity_page[0] = table->activity_page[1] = 0;
 	l1num = 512;
 	l2num = 512;
 	l3num = 512;
@@ -252,8 +242,6 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 						else
 						{
 							int ret;
-							//       						total_valid_calculate( (((gw.l1e)>>12)&ADDR_MASK ), table->total_valid_pages);
-							(table->total_valid_pages)++;  						
 							ret = compare_swap(table, &gw, l1offset, 1, 0);
 							total++;
 						}
@@ -284,8 +272,10 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 		goto BUSERR;
 	}
 
-BUSERR: 
+	return count;
 
+BUSERR:
+	table->h.clear();
 	//	if(table->non2s != 0)
 	//		printf("###All_pages:%lu swap_page:%lu non2s:%lu s2non:%lu total_page: %lu hugepage_counter:%u cr3:%lx###\n", 
 	//				total, count, table->non2s, table->s2non, table->total_valid_pages, hugepage_counter, dtb);
@@ -301,13 +291,13 @@ int walk_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size,  unsign
 		cr3 = cr3_list[i];
 		//If there are no struct for this cr3, map will automated assigned new struct
 		struct hash_table &h = list[cr3];
-		h.cr3 = cr3;
-		h.round = round;
 		if(cr3 == 0x187000)
 			continue;
 		page_walk_ia32e(cr3, &h, gw);
 	}
 }
+
+/*retrieve cr3 list for long time no used*/
 int retrieve_list(DATAMAP &list, unsigned int round)
 {
 	DATAMAP::iterator it = list.begin();
@@ -337,45 +327,69 @@ int retrieve_list(DATAMAP &list, unsigned int round)
 	return retrieve_cr3_number;
 }
 
+static void estimate_bottleneck_set(SHARED_TREE *system_map, int valid_bit, 
+		map<sharedID_t, int> &tmp_max_change_times, sharedID_t sharedID,
+		struct hash_table *h, int huge_bit, unsigned long &total_change_times, unsigned long cr3,
+		unsigned long change_times)
+{
+	/*The page is shared with each other*/
+	if(system_map->count(sharedID) > 0){
+		if(tmp_max_change_times[sharedID] < change_times){
+			total_change_times -= tmp_max_change_times[sharedID];
+			total_change_times += change_times;
+			tmp_max_change_times[sharedID] = change_times;
+		}
+		system_map->at(sharedID).add_share_relation(cr3);
+	}
+	/*Page is not shared*/
+	else{
+		Shared_page_node shared_node;
+		system_map->insert(pair<sharedID_t, Shared_page_node>(sharedID, shared_node));
+		system_map->at(sharedID).add_share_relation(cr3);
+		tmp_max_change_times[sharedID] = change_times;
+		total_change_times += change_times;
+		if(huge_bit == 0){
+			(h->activity_page)[valid_bit]++;
+		}
+		else{
+			(h->activity_page)[valid_bit] += 512;
+		}
+	}
+}
 unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 {
 	DATAMAP::iterator it = list.begin();
 	unsigned long check_cr3_num = 0;
 	unsigned long total_change_times = 0;
-	SYSTEM_MAP *system_map;
-	map<unsigned long, struct page_data>page_owner;
+	map<sharedID_t, int> tmp_max_change_times;
 	Sampled_data sample_data;
+	sharedID_t sharedID;
 
-	sample_result.insert(pair<unsigned int, Sampled_data>(round, sample_data));
-
+	sample_result.insert(pair<round_t, Sampled_data>(round, sample_data));
 	while(it != list.end())
 	{
-		unsigned long change_times;
 		struct hash_table &h = it->second;
 		unsigned long cr3 = it->first;
+		unsigned long change_times;
+		addr_t paddr;
 		check_cr3_num++;
 
-		sample_result[round].add_process(cr3);
 		HASHMAP::iterator hashIt = h.h.begin();
 		(h.activity_page)[0] = (h.activity_page)[1] = (h.activity_page)[2] = 0;
 		while(hashIt != h.h.end()){
-			unsigned long paddr;
 			byte valid_bit = (hashIt->second.present_times) & 1;
 			byte val_ref = hashIt->second.present_times;
 			char huge_bit = get_huge_bit(hashIt->second.paddr);
 
-
-			if(valid_bit == 0){
-				system_map = &system_map_swap;
-				paddr = get_swap_id(hashIt->second.paddr);
-			}
-			else{
-				system_map = &system_map_wks;
-				paddr = get_paddr(hashIt->second.paddr);
-			}
+			/*Is sharedID ok when valid_bit = 1 ????????*/
+			sharedID = get_swap_id(hashIt->second.paddr);
+			paddr = get_paddr(hashIt->second.paddr);
 			change_times = get_change_number(val_ref);
 	
-
+			/* 
+			 * The data have not been valid and change times already add 1, 
+			 * so it need to decrease 1
+			 * */
 			if( h.check == 0 && change_bit_set(hashIt->second.paddr) ){
 				if(change_times >= 1){
 					change_times -= 1;
@@ -385,46 +399,35 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 					continue;
 				}
 			}
+			if(change_times >= CHANGE_LIMIT ){
+				estimate_bottleneck_set( &(sample_result[round].shared_tree), valid_bit, 
+						tmp_max_change_times, sharedID, &h, huge_bit, total_change_times, cr3,
+						change_times);
+			}
 
-			if(  (change_times >= CHANGE_LIMIT && valid_bit == 0) || valid_bit == 1 ){
-				//			if(  ( valid_bit == 0 ){
-				/*check if paddr already stored in system_map*/
-				if(system_map->count(paddr) > 0){
-					if(page_owner[paddr].max_change_times < change_times){
-						page_owner[paddr].max_change_times = change_times;
-					}
-					unsigned long owner = page_owner[paddr].owner;
-					(system_map->at(paddr))++;
-					sample_result[round].add_share(owner, cr3);
+			/*Only for estimating working set size for this round*/
+			if(valid_bit){
+				if(system_map_wks.count(paddr) == 0){
+					h.activity_page[valid_bit]++;
+					system_map_wks[paddr] = 1;
 				}
 				else{
-					struct page_data page_data;
-					page_data.owner = cr3;
-					page_data.max_change_times = change_times;
-
-					page_owner.insert(pair<unsigned long, struct page_data>( paddr, page_data));
-					system_map->insert(pair<unsigned long, byte>(paddr, 1));
-					if(huge_bit == 0){
-						(h.activity_page)[valid_bit]++;
-					}
-					else{
-						(h.activity_page)[valid_bit] += 512;
-					}
-					total_change_times += change_times;
+					system_map_wks[paddr]++;
 				}
 			}
 
 			hashIt++;
 		}//end walk each page for CR3
 
+		sample_result[round].cr3_info[cr3] = h.activity_page[0];
 		result[0] += h.activity_page[0];
 		result[1] += h.activity_page[1];
-		result[2] += h.total_valid_pages;
 		it++;
 	}
-	sample_result[round].set_value( result[0], total_change_times);
+	sample_result[round].set_value( result[0] );
+	global_total_change_times += total_change_times;
+	tmp_max_change_times.clear();
+	system_map_wks.clear();
 
-	page_owner.clear();
 	return check_cr3_num;
 }
-
