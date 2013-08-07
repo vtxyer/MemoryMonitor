@@ -345,7 +345,7 @@ int retrieve_list(DATAMAP &list)
 }
 
 static void estimate_bottleneck_set(SHARED_TREE *system_map, int valid_bit, 
-		sharedID_t sharedID, struct hash_table *h, int huge_bit, unsigned long cr3,
+		sharedID_t sharedID, struct hash_table *h, int huge_bit, unsigned long &total_change_times, unsigned long cr3,
 		bool is_change_times_add)
 {
 
@@ -393,6 +393,7 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 		while(hashIt != h.pte_data.end()){	
 			byte valid_bit = (hashIt->second.present_times) & 1;
 			byte val_ref = hashIt->second.present_times;
+			unsigned int change_times = get_change_number(val_ref);
 			char huge_bit = get_huge_bit(hashIt->second.paddr);
 			bool is_change_times_add = false;
 

@@ -147,7 +147,7 @@ unsigned long get_vaddr(unsigned long l1offset, unsigned long l2offset, unsigned
 int entry_valid(unsigned long entry);
 int pte_entry_valid(unsigned long entry);
 void set_change_bit(unsigned long &entry, bool val);
-bool change_bit_set(unsigned long entry);
+bool is_change_bit_set(unsigned long entry);
 
 
 
