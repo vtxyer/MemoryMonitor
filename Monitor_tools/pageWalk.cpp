@@ -345,26 +345,22 @@ int retrieve_list(DATAMAP &list)
 }
 
 static void estimate_bottleneck_set(SHARED_TREE *system_map, int valid_bit, 
-		map<sharedID_t, int> &tmp_max_change_times, sharedID_t sharedID,
-		struct hash_table *h, int huge_bit, unsigned long &total_change_times, unsigned long cr3,
-		unsigned long change_times)
+		sharedID_t sharedID, struct hash_table *h, int huge_bit, unsigned long cr3,
+		bool is_change_times_add)
 {
+
+
 	/*The page is shared with each other*/
 	if(system_map->count(sharedID) > 0){
-		if(tmp_max_change_times[sharedID] < change_times){
-//			total_change_times -= tmp_max_change_times[sharedID];
-//			total_change_times += change_times;
-			tmp_max_change_times[sharedID] = change_times;
-		}
-		system_map->at(sharedID).add_share_relation(cr3);
+//		system_map->at(sharedID).add_share_relation(cr3);
 	}
 	/*Page is not shared*/
 	else{
 		Shared_page_node shared_node;
 //		system_map->insert(pair<sharedID_t, Shared_page_node>(sharedID, shared_node));
 //		system_map->at(sharedID).add_share_relation(cr3);
-		tmp_max_change_times[sharedID] = change_times;
-		total_change_times += change_times;
+		if(is_change_times_add)		
+			total_change_times += 1;
 		if(huge_bit == 0){
 			(h->activity_page)[valid_bit]++;
 		}
@@ -378,7 +374,6 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 	DATAMAP::iterator it = list.begin();
 	unsigned long check_cr3_num = 0;
 	unsigned long total_change_times = 0;
-	map<sharedID_t, int> tmp_max_change_times;
 	Sampled_data sample_data;
 	sharedID_t sharedID;
 
@@ -387,7 +382,6 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 	{
 		struct hash_table &h = it->second;
 		unsigned long cr3 = it->first;
-		unsigned long change_times;
 		addr_t paddr;
 		check_cr3_num++;
 
@@ -400,29 +394,25 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 			byte valid_bit = (hashIt->second.present_times) & 1;
 			byte val_ref = hashIt->second.present_times;
 			char huge_bit = get_huge_bit(hashIt->second.paddr);
+			bool is_change_times_add = false;
 
 			/*Is sharedID ok when valid_bit = 1 ????????*/
 			sharedID = get_swap_id(hashIt->second.paddr);
 			paddr = get_paddr(hashIt->second.paddr);
-			change_times = get_change_number(val_ref);
 	
 			/* 
 			 * The data have not been valid and change times already add 1, 
 			 * so it need to decrease 1
 			 * */
-			if( h.check == 0 && change_bit_set(hashIt->second.paddr) ){
-				if(change_times >= 1){
-					change_times -= 1;
-				}
-				else{
-					hashIt++;
-					continue;
-				}
+			if( h.check == 1 && is_change_bit_set(hashIt->second.paddr) ){
+				is_change_times_add = true;
 			}
+			set_change_bit(hashIt->second.paddr, false);
+
 			if(change_times >= CHANGE_LIMIT ){
 				estimate_bottleneck_set( &(sample_result[round].shared_tree), valid_bit, 
-						tmp_max_change_times, sharedID, &h, huge_bit, total_change_times, cr3,
-						change_times);
+						sharedID, &h, huge_bit, total_change_times, cr3,
+						is_change_times_add);
 			}
 
 			/*Only for estimating working set size for this round*/
@@ -448,7 +438,6 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 	}
 	sample_result[round].set_value( result[0] );
 	global_total_change_times += total_change_times;
-	tmp_max_change_times.clear();
 	system_map_wks.clear();
 
 	return check_cr3_num;

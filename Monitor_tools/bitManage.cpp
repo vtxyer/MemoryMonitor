@@ -87,7 +87,7 @@ void set_change_bit(unsigned long &entry, bool val){
 		clear_bit(entry, 63, 63);
 	}
 }
-bool change_bit_set(unsigned long entry){
+bool is_change_bit_set(unsigned long entry){
 	unsigned long bit = get_bit(entry, 1, 63);
 	if(bit)
 		return true;
