@@ -40,7 +40,6 @@ struct mapData
 	 * bit 0 -> present bit, bit 1~7 -> change times
 	 * */
 	byte present_times;
-
 	/*
 	 * valid_bit==1 -> [63:63]:bool for is_change_times_change, [62:28]:paddr, [0:0]:huge_bit
 	 * valid_bit==0 -> [63:63]:bool for is_change_times_change, [62:28]:paddr, [27:1]:swap_paddr, [0:0]huge_bit
