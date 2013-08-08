@@ -99,7 +99,7 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 			save_swap_paddr(mapVal.paddr, paddr);
 		}
 		save_huge_bit(mapVal.paddr, huge_bit);
-		set_change_bit(mapVal.paddr, true);
+		set_change_bit(mapVal.paddr, false);
 
 		table->pte_data.insert(map<unsigned long, mapData>::value_type(vkey, mapVal));
 		ret = 0;
@@ -120,24 +120,27 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 		val = val_ref&1;
 		//non-swap to swap bit
 		if( val==1 && valid_bit==0 ){	
-			//			fprintf(stderr, "bit:%x non2s va:%lx\n", val_ref, gw->va);
+			//fprintf(stderr, "bit:%x non2s va:%lx\n", val_ref, gw->va);
 			add_change_number(val_ref);
+			set_change_bit(paddr_val, true);
 			ret = 1;
 		}
 		//swap to non-swap bit
 		else if(val==0 && valid_bit==1){
-			//			fprintf(stderr, "bit:%x s2non va:%lx\n", val_ref, gw->va);
-			add_change_number(val_ref);			
+			/*Is this need to add change times here?????????????????*/
+			if(get_change_number(val_ref) != 0){
+				add_change_number(val_ref);		
+				set_change_bit(paddr_val, true);
+			}
 			ret = 0;		
+		}
+		else{
+			set_change_bit(paddr_val, false);
 		}
 
 		if(val!=valid_bit){
 			val_ref &= 0xfe;
 			val_ref |= valid_bit;
-			set_change_bit(paddr_val, true);
-		}
-		else{
-			set_change_bit(paddr_val, false);
 		}
 	}
 	return ret;
@@ -147,7 +150,7 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest_pagetable_walk &gw)
 {
 	unsigned long count=0, total=0;	
-	unsigned long *l1p, *l2p, *l3p, *l4p;
+	unsigned long *l1p=NULL, *l2p=NULL, *l3p=NULL, *l4p=NULL;
 
 	uint64_t pml4e = 0, pdpte = 0, pde = 0, pte = 0, access=0;
 	unsigned long l1offset, l2offset, l3offset, l4offset;
@@ -164,7 +167,6 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 	//	l4num = 511;
 	//l4num = 1;
 	memset(&gw, 0, sizeof(struct guest_pagetable_walk));	
-
 
 	if(!sigsetjmp(sigbuf, 1)){
 		l4p = (unsigned long *)map_page(dtb, 4, &gw);
@@ -276,10 +278,9 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 	}
 	else{
 		/*bus error*/
-		table->pte_data.clear();
-
-
-
+		if(!table->pte_data.empty()){			
+			table->pte_data.clear();
+		}
 		if(l1p != NULL)
 			munmap(l1p, XC_PAGE_SIZE);
 		if(l2p != NULL)
@@ -291,10 +292,11 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 		goto BUSERR;
 	}
 
+
 	return count;
 
 BUSERR:
-
+	printf("bus error\n");
 	//	if(table->non2s != 0)
 	//		printf("###All_pages:%lu swap_page:%lu non2s:%lu s2non:%lu total_page: %lu hugepage_counter:%u cr3:%lx###\n", 
 	//				total, count, table->non2s, table->s2non, table->total_valid_pages, hugepage_counter, dtb);
@@ -335,7 +337,8 @@ int retrieve_list(DATAMAP &list)
 		}
 
 		if(interval >= MAX_ROUND_INTERVAL){
-			h.pte_data.clear();
+//			if(!h.pte_data.empty())
+//				h.pte_data.clear();
 			retrieve_cr3_number++;
 		}
 		it++;
@@ -344,102 +347,144 @@ int retrieve_list(DATAMAP &list)
 	return retrieve_cr3_number;
 }
 
-static void estimate_bottleneck_set(SHARED_TREE *system_map, int valid_bit, 
-		sharedID_t sharedID, struct hash_table *h, int huge_bit, unsigned long &total_change_times, unsigned long cr3,
-		bool is_change_times_add)
+
+
+
+/*Estimate bottleneck page set for each times*/
+static unsigned long estimate_bottleneck_set(SHARED_TREE &system_map,
+		struct hash_table &h, unsigned long &total_change_times, unsigned long cr3,
+		map<sharedID_t, int> &redundancy_check, unsigned long &bps)
 {
+	unsigned long shared_pages = 0;
+	CR3_INFO &cr3_info = sample_result[round].cr3_info;
+	HASHMAP::iterator hashIt = h.pte_data.begin();
+	addr_t paddr;
+	sharedID_t sharedID;
+	unsigned int change_times;
+	byte huge_bit, valid_bit, val_ref;
+	bool is_change_times_add = false;
 
+	if(h.check == 1){
+	sample_result[round].cr3_info.insert(pair<cr3_t, unsigned>(cr3, 0));
+    while(hashIt != h.pte_data.end()){
 
-	/*The page is shared with each other*/
-	if(system_map->count(sharedID) > 0){
-//		system_map->at(sharedID).add_share_relation(cr3);
-	}
-	/*Page is not shared*/
-	else{
-		Shared_page_node shared_node;
-//		system_map->insert(pair<sharedID_t, Shared_page_node>(sharedID, shared_node));
-//		system_map->at(sharedID).add_share_relation(cr3);
-		if(is_change_times_add)		
-			total_change_times += 1;
-		if(huge_bit == 0){
-			(h->activity_page)[valid_bit]++;
+		valid_bit = (hashIt->second.present_times) & 1;
+		val_ref = hashIt->second.present_times;
+		change_times = get_change_number(val_ref);
+		huge_bit = get_huge_bit(hashIt->second.paddr);
+		is_change_times_add = false;
+
+		/*Is sharedID ok when valid_bit = 1 ????????*/
+		sharedID = get_swap_id(hashIt->second.paddr);
+		paddr = get_paddr(hashIt->second.paddr);
+
+		/* 
+		 * The data have not been so we will not add change times
+		 * But we will still add wrong size ????????????
+		 * */
+		if( h.check == 1 && is_change_bit_set(hashIt->second.paddr) ){
+			is_change_times_add = true;
+		}
+		else if(h.check == 0 && is_change_bit_set(hashIt->second.paddr) ){
+			change_times -= 1;
+		}
+		set_change_bit(hashIt->second.paddr, false);
+
+		/*Only for estimating working set size for this round*/
+		if(valid_bit){
+			if(system_map_wks.count(paddr) == 0){
+				h.activity_page[valid_bit]++;
+				system_map_wks[paddr] = 1;
+			}
+			else{
+				system_map_wks[paddr]++;
+			}
+		}
+
+		if(change_times >= CHANGE_LIMIT ){
+			bps++;
+			/*The page is shared with each other*/
+			cr3_info[cr3]++;
+			if(redundancy_check.count(sharedID) > 0){
+				if(system_map.count(sharedID) <= 0){
+					Shared_page_node shared_node;
+					system_map.insert(pair<sharedID_t, Shared_page_node>(sharedID, shared_node));
+					system_map.at(sharedID).add_share_relation(cr3);
+				}
+				else
+					system_map.at(sharedID).add_share_relation(cr3);
+				shared_pages++;
+
+				h.pte_data.erase(hashIt);
+				hashIt++;
+			}
+			/*Page is not shared*/
+			else{
+				redundancy_check[sharedID]++;
+				if(is_change_times_add)		
+					total_change_times += 1;
+		
+				/*despite valid_bit, they are all bottleneck pages??????*/
+				if(valid_bit == 0){
+					if(huge_bit == 0){
+						(h.activity_page)[0]++;
+					}
+					else{
+						(h.activity_page)[0] += 512;
+					}
+				}
+
+				hashIt++;
+			}
 		}
 		else{
-			(h->activity_page)[valid_bit] += 512;
+			hashIt++;
 		}
-	}
+
+	}//end walk each page for CR3
+
+	}//end if h.check
+
+	return shared_pages;
 }
+
 unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 {
 	DATAMAP::iterator it = list.begin();
 	unsigned long check_cr3_num = 0;
 	unsigned long total_change_times = 0;
 	Sampled_data sample_data;
-	sharedID_t sharedID;
+	unsigned long shared_pages = 0, bps = 0;
+	unsigned long cr3;
+	map<cr3_t, int>redundancy_check;
 
 	sample_result.insert(pair<round_t, Sampled_data>(round, sample_data));
 	while(it != list.end())
 	{
 		struct hash_table &h = it->second;
-		unsigned long cr3 = it->first;
-		addr_t paddr;
+		cr3 = it->first;
 		check_cr3_num++;
 
-		HASHMAP::iterator hashIt = h.pte_data.begin();
 		(h.activity_page)[0] = (h.activity_page)[1] = (h.activity_page)[2] = 0;
-
-		if(h.check == 1){
-
-		while(hashIt != h.pte_data.end()){	
-			byte valid_bit = (hashIt->second.present_times) & 1;
-			byte val_ref = hashIt->second.present_times;
-			unsigned int change_times = get_change_number(val_ref);
-			char huge_bit = get_huge_bit(hashIt->second.paddr);
-			bool is_change_times_add = false;
-
-			/*Is sharedID ok when valid_bit = 1 ????????*/
-			sharedID = get_swap_id(hashIt->second.paddr);
-			paddr = get_paddr(hashIt->second.paddr);
-	
-			/* 
-			 * The data have not been valid and change times already add 1, 
-			 * so it need to decrease 1
-			 * */
-			if( h.check == 1 && is_change_bit_set(hashIt->second.paddr) ){
-				is_change_times_add = true;
-			}
-			set_change_bit(hashIt->second.paddr, false);
-
-			if(change_times >= CHANGE_LIMIT ){
-				estimate_bottleneck_set( &(sample_result[round].shared_tree), valid_bit, 
-						sharedID, &h, huge_bit, total_change_times, cr3,
-						is_change_times_add);
-			}
-
-			/*Only for estimating working set size for this round*/
-			if(valid_bit){
-				if(system_map_wks.count(paddr) == 0){
-					h.activity_page[valid_bit]++;
-					system_map_wks[paddr] = 1;
-				}
-				else{
-					system_map_wks[paddr]++;
-				}
-			}
-
-			hashIt++;
-		}//end walk each page for CR3
-
-		}//end if h.check
-
-		sample_result[round].cr3_info[cr3] = h.activity_page[0];
+		shared_pages +=  estimate_bottleneck_set( 
+							sample_result[round].shared_tree, 
+							h, total_change_times, cr3,
+							redundancy_check, bps);
 		result[0] += h.activity_page[0];
 		result[1] += h.activity_page[1];
 		it++;
 	}
 	sample_result[round].set_value( result[0] );
 	global_total_change_times += total_change_times;
-	system_map_wks.clear();
+	if(!system_map_wks.empty()){
+		system_map_wks.clear();
+	}
+	if(!redundancy_check.empty()){
+		redundancy_check.clear();
+	}
+	printf("shared_pages:%lu bps:%lu[M]\n", shared_pages, bps/256);
 
 	return check_cr3_num;
 }
+
+

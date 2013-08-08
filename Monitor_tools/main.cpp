@@ -96,7 +96,7 @@ int main(int argc, char *argv[])
 		calculate_all_page(data_map, result);
 
 		printf("cr3 heap size\n");
-		printf("InvalidMemory:%lu[M] ValidMemory:%lu[M] ChangeTimes:%lu Round %d\n\n", 
+		printf("BottleneckMemory:%lu[M] ValidMemory:%lu[M] ChangeTimes:%lu Round %d\n\n", 
 					result[0]/256, result[1]/256, global_total_change_times, round);
 
 

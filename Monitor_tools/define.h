@@ -19,7 +19,7 @@ extern "C"{
 using namespace std;
 
 #define CHANGE_LIMIT 1
-#define MAX_ROUND_INTERVAL 5 
+#define MAX_ROUND_INTERVAL 50 
 #define ADDR_MASK 0x0000ffffffffffff
 #define RECENT_CR3_SIZE 50
 
