@@ -64,6 +64,9 @@
 #include <asm/mem_event.h>
 #include <public/mem_event.h>
 
+/*<VT> add*/
+#include <public/event_channel.h>
+
 bool_t __read_mostly hvm_enabled;
 
 unsigned int opt_hvm_debug_level __read_mostly;
@@ -1130,28 +1133,24 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
     struct vcpu *v = current;
     struct p2m_domain *p2m = p2m_get_hostp2m(v->domain);
 
-	unsigned long cr3;
-	struct cpu_user_regs *regs = guest_cpu_user_regs();
-	unsigned long *pte_content, *data_content;
-	unsigned long data_page_paddr;
 
     mfn = gfn_to_mfn_type_current(p2m, gfn, &p2mt, &p2ma, p2m_guest);
 
 	/*<VT> add*/
-	if(p2mt == p2m_ram_pte_lock){
-		cr3 = v->arch.hvm_vcpu.guest_cr[3]; 
-		pte_content = (unsigned long *)map_guest_paddr(v, p2m, cr3, gpa);
-		data_page_paddr = ((*pte_content)>>12);
-		data_page_paddr &= 0xfffffffff;  
-		data_content = (unsigned long *)map_guest_paddr(v, p2m, cr3, data_page_paddr);
-		
-		printk("<VT> cr3:%lx gfn:%lx pte_content:%lx data_content:%lx eax:%lx edx:%lx\n",
-			cr3, gfn, *pte_content, *data_content, regs->eax, regs->edx
-		);
-		p2m_change_type(p2m, gfn, p2m_ram_pte_lock, p2m_ram_rw);
-
-		unmap_domain_page((void *)pte_content);
-		unmap_domain_page((void *)data_content);
+	if(p2mt == p2m_ram_page_lock){
+		p2m_change_type(p2m, gfn, p2m_ram_page_lock, p2m_ram_rw);
+		do{
+			int counter = atomic_read(&v->domain->touched_page_num);
+			if(counter != 55555){
+				atomic_inc(&v->domain->touched_page_num);
+				if( counter > v->domain->lock_pages_threshold && counter != 55555){
+					send_guest_global_virq(dom0, 20);
+					atomic_set(&v->domain->touched_page_num, 55555);
+					printk("<VT> memory usage over limit\n");
+				}
+			}
+		}while(0);
+		return 1;
 	}
 
 

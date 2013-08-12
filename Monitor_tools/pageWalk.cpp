@@ -92,6 +92,8 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 		mapData mapVal;
 		mapVal.present_times = valid_bit;
 
+		save_paddr(mapVal.paddr, 0);
+		save_swap_paddr(mapVal.paddr, 0);
 		if(valid_bit == 1){
 			save_paddr(mapVal.paddr, paddr);
 		}
@@ -156,7 +158,7 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 	unsigned long l1offset, l2offset, l3offset, l4offset;
 	int l1num, l2num, l3num, l4num;
 	int flag;
-	unsigned int hugepage_counter = 0;
+	unsigned int hugepage_counter = 0, free_pages = 0;
 
 
 	table->check = table->activity_page[0] = table->activity_page[1] = 0;
@@ -164,8 +166,8 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 	l2num = 512;
 	l3num = 512;
 	l4num = 512;
-	//	l4num = 511;
-	//l4num = 1;
+//	l4num = 511;
+//	l4num = 1;
 	memset(&gw, 0, sizeof(struct guest_pagetable_walk));	
 
 	if(!sigsetjmp(sigbuf, 1)){
@@ -244,16 +246,19 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 						 * But there are some problem with shared memory if we didn't count it??????????
 						 */
 						map<unsigned long, mapData>::iterator tmp_it;
-						tmp_it = table->pte_data.find(gw.va);
-						unsigned long paddr = get_paddr(tmp_it->second.paddr);
-						if(gw.l1e == 0 && paddr != 0 ){
+						if(gw.l1e == 0 && table->pte_data.count(gw.va)>0 ){
+							free_pages++;
+							tmp_it = table->pte_data.find(gw.va);
 							table->pte_data.erase( tmp_it );
 							continue;
 						}
+						if(gw.l1e == 0){
+							continue;
+						}
 
+						count++;
 						if( !pte_entry_valid(gw.l1e))
 						{
-							count++;
 							int ret;
 							ret = compare_swap(table, &gw, l1offset, 0, 0);
 						}
@@ -292,11 +297,12 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 		goto BUSERR;
 	}
 
-
+//	if(free_pages > 256)
+//		printf("free_pages %lu[M]\n", free_pages/256);
+//	printf("count:%lu[M]\n", count/256);
 	return count;
 
 BUSERR:
-	printf("bus error\n");
 	//	if(table->non2s != 0)
 	//		printf("###All_pages:%lu swap_page:%lu non2s:%lu s2non:%lu total_page: %lu hugepage_counter:%u cr3:%lx###\n", 
 	//				total, count, table->non2s, table->s2non, table->total_valid_pages, hugepage_counter, dtb);
@@ -414,7 +420,6 @@ static unsigned long estimate_bottleneck_set(SHARED_TREE &system_map,
 				else
 					system_map.at(sharedID).add_share_relation(cr3);
 				shared_pages++;
-
 				h.pte_data.erase(hashIt);
 				hashIt++;
 			}

@@ -110,9 +110,8 @@ static void ept_p2m_type_to_flags(ept_entry_t *entry, p2m_type_t type, p2m_acces
             entry->r = 1;
             entry->w = entry->x = 0;
             break;
-		case p2m_ram_pte_lock:
-			entry->w = 0;
-			entry->r = entry->x = 1;
+		case p2m_ram_page_lock:
+			entry->w = entry->r = entry->x = 0;
 			break;
     }
 
@@ -913,6 +912,33 @@ void setup_ept_dump(void)
  * End:
  */
 
+int lock_pages(struct domain *d, unsigned int parts)
+{
+    struct p2m_domain *p2m;
+	unsigned long tot_pages, parts_size, gfn;
+	unsigned int offset, part_start;
+	unsigned int i;
+
+	p2m = p2m_get_hostp2m(d);
+	tot_pages = (d->tot_pages) - 0x2000;
+	parts_size = tot_pages/parts;
+	offset = parts_size/2;
+	printk("<VT> parts_size:%lu, tot_pages:%lu\n", parts_size, tot_pages);
+
+//	p2m_lock(p2m);
+	for(i=0; i<parts; i++){
+		part_start = parts_size*i + 0x2000;
+		gfn = part_start + offset;
+		if(gfn > tot_pages)
+			break;
+		p2m_change_type(p2m, gfn, p2m_ram_rw, p2m_ram_page_lock);
+	}
+	atomic_set(&d->touched_page_num, 1);
+//	p2m_unlock(p2m);
+	printk("<VT> lock %d ok\n", i);
+	return 0;
+}
+
 
 unsigned long do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf1, void *buf2)
 {
@@ -942,6 +968,7 @@ unsigned long do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf
 				return -1;
 			}
 			d->sample_flag = 1;
+			d->lock_pages_threshold = longBuff[0];
 			break;
 		case 2:
 			/*stop sampling*/
@@ -967,9 +994,15 @@ unsigned long do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf
             spin_unlock(&(d->recent_cr3_lock));
             break;
 		case 4:
-			/*lock assigned page*/
-			p2m_change_type(p2m, arg, p2m_ram_rw, p2m_ram_pte_lock);
-			break;	
+			/*lock pages*/
+			lock_pages(d, arg);
+			break;
+		case 5:
+			/*get lock pages number*/
+			printk("touched number:%u\n", 
+					atomic_read(&d->touched_page_num));
+			return atomic_read(&d->touched_page_num);
+			break;
 	}
     return 0;
 }

@@ -338,7 +338,8 @@ struct domain
 	int sample_flag;
 	unsigned long recent_cr3_size;
 	unsigned long *recent_cr3;
-
+	atomic_t touched_page_num;
+	unsigned long lock_pages_threshold;
 };
 
 struct domain_setup_info

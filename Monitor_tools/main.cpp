@@ -10,9 +10,13 @@ int domID;
 round_t round;
 SYSTEM_MAP system_map_wks;
 map<round_t, Sampled_data> sample_result;
-xc_interface *xch4, *xch3, *xch2, *xch1;
+xc_interface *xch4, *xch3, *xch2, *xch1, *xch_event;
 sigjmp_buf sigbuf;
 unsigned long global_total_change_times;
+pthread_mutex_t monitor_flag_lock;
+pthread_t event_thread, mem_thread;
+int monitor_flag;
+int hypercall_fd;
 
 void handler(int sig){
 //	printf("signal bus error\n");
@@ -33,11 +37,41 @@ int file_cr3(unsigned long *cr3_list){
 	return num;
 }
 
+void refund()
+{
+	xc_interface_close(xch1);
+	xc_interface_close(xch2);
+	xc_interface_close(xch3);
+	xc_interface_close(xch4);
+	pthread_cancel(mem_thread);
+	pthread_cancel(event_thread);
+	pthread_join(mem_thread, NULL);
+	pthread_join(event_thread, NULL);
+	printf("Stop monitor\n");
+	exit(1);
+}
+
+void calculate_size(DATAMAP data_map)
+{
+	unsigned long size = 0;
+	DATAMAP::iterator it = data_map.begin();
+	while(it != data_map.end()){
+		unsigned long p_size;
+		unsigned long p_num = it->second.pte_data.size();
+		p_size = (16 * p_num);
+		size += p_size;
+		printf("sizeof(struct mapData):%lu pte_data.size:%lu p_size:%lu[M]\n", 
+					sizeof(struct mapData), it->second.pte_data.size(), p_size/256);
+		it++;
+	}
+	printf("total size: %lu[M]\n", size/256);
+}
+
 
 
 int main(int argc, char *argv[])  
 { 
-	int fd, ret, i, list_size;  
+	int ret, i, list_size;  
 	unsigned long cr3, value, os_type, total_change_page;
 	unsigned long offset = 0;
 	struct hash_table global_hash;
@@ -63,26 +97,31 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "xch alloc error\n");
 		exit(1);
 	}
-	fd = open("/proc/xen/privcmd", O_RDWR);  
-	if (fd < 0) {  
+	hypercall_fd = open("/proc/xen/privcmd", O_RDWR);  
+	if (hypercall_fd < 0) {  
 		perror("open");  
 		exit(1);  
 	}
 
-	ret = init_hypercall(RECENT_CR3_SIZE, fd);
+	ret = init_hypercall(RECENT_CR3_SIZE, hypercall_fd);
 	if(ret == -1){
 		printf("Init environment error\n");
 		return -1;
 	}
 
+	/***********************Sample memory usage thread*******************************/
+	pthread_mutex_t monitor_flag_lock = PTHREAD_MUTEX_INITIALIZER;
+	monitor_flag = 0;
+	pthread_create(&mem_thread, NULL, sample_usage, NULL);
+	/***********************Sample memory usage thread*******************************/
 
 	int ttt=0; 
-
+	unsigned long tmp_max_mem = 0;
 //	list_size = file_cr3(cr3_list);
 
 	while(1){
 	 	ttt++;
-		get_cr3_hypercall(cr3_list, list_size, fd);
+		get_cr3_hypercall(cr3_list, list_size, hypercall_fd);
 
 //		cr3_list[0] = 0x3bb2c000;
 //		list_size = 1; //limit to size 5
@@ -95,9 +134,13 @@ int main(int argc, char *argv[])
 
 		calculate_all_page(data_map, result);
 
-		printf("cr3 heap size\n");
-		printf("BottleneckMemory:%lu[M] ValidMemory:%lu[M] ChangeTimes:%lu Round %d\n\n", 
-					result[0]/256, result[1]/256, global_total_change_times, round);
+
+		if(tmp_max_mem < result[0]){
+			tmp_max_mem = result[0];
+		}
+//		calculate_size(data_map);
+		printf("Max:%lu[M] BottleneckMemory:%lu[M] ValidMemory:%lu[M] ChangeTimes:%lu Round %d\n\n", 
+					tmp_max_mem/256, result[0]/256, result[1]/256, global_total_change_times, round);
 
 
 		walk_cr3_list(data_map, cr3_list, list_size, round, gw);
@@ -106,14 +149,14 @@ int main(int argc, char *argv[])
 		round++;
 		retrieve_list(data_map);
 
-		sleep(2);		
+		do{
+			sleep(SAMPLE_INTERVAL);		
+//		}while(monitor_flag == 0);
+		}while(0);
 	}
 
-	xc_interface_close(xch1);
-	xc_interface_close(xch2);
-	xc_interface_close(xch3);
-	xc_interface_close(xch4);
 
+	refund();
 	return 0;
 }
 

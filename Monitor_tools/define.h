@@ -13,6 +13,7 @@ extern "C"{
 #include <sys/mman.h>
 #include <xs.h>
 #include <setjmp.h>
+#include <pthread.h>
 }
 #include <map>
 #include <list>
@@ -20,8 +21,14 @@ using namespace std;
 
 #define CHANGE_LIMIT 1
 #define MAX_ROUND_INTERVAL 50 
+#define USAGE_SLEEP 30
+#define SAMPLE_INTERVAL 3
+#define LOCK_PAGES	200 
+#define LOCK_PAGES_THRESHOLD 120
+
+
+#define RECENT_CR3_SIZE 300
 #define ADDR_MASK 0x0000ffffffffffff
-#define RECENT_CR3_SIZE 50
 
 
 typedef unsigned long addr_t;
@@ -94,7 +101,6 @@ public:
 		else
 			return true;
 	}
-private:
 	/*shared cr3 list*/
 	CR3_LIST shared_cr3_list;
 };
@@ -123,10 +129,13 @@ extern int domID;
 extern round_t round;
 extern SYSTEM_MAP system_map_wks;
 extern map<round_t, Sampled_data> sample_result;
-extern xc_interface *xch4, *xch3, *xch2, *xch1;
+extern xc_interface *xch4, *xch3, *xch2, *xch1, *xch_event;
 extern sigjmp_buf sigbuf;
 extern unsigned long global_total_change_times;
-
+extern pthread_t event_thread, mem_thread;
+extern pthread_mutex_t monitor_flag_lock;
+extern int monitor_flag;
+extern int hypercall_fd;
 
 /* BitManage */
 //1~7 bits represent change number
@@ -154,12 +163,13 @@ bool is_change_bit_set(unsigned long entry);
 /* Hypercall */
 extern "C"{
 int init_hypercall(int recent_cr3_size, int fd);
+int lock_pages_hypercall(int parts_num, int fd);
 void get_cr3_hypercall(unsigned long *cr3_list, int &list_size, int fd);
 }
 
 
-
-
+/*high memory usage dection*/
+void *sample_usage(void *);
 
 /* Page Walk */
 void* map_page(unsigned long pa_base, int level, struct guest_pagetable_walk *gw);
