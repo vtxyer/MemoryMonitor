@@ -12,6 +12,10 @@ int add_change_number(byte &value)
 		number |= (value&1);
 		value = number;
 	}
+	else{
+		printf("overflow but ++global_total_change_times\n");
+		global_total_change_times++;
+	}
 }
 unsigned long get_change_number(byte value)
 {
@@ -33,7 +37,7 @@ unsigned long get_bit(unsigned long entry, int num, int position)
 	value >>= (unsigned long)position;
 	return value;
 }
-void clear_bit(unsigned long &addr, int start, int end){
+void clear_bit(unsigned long *addr, int start, int end){
 	unsigned long mask = 0;
 	unsigned long tmp = -1;
 	for(int i=start; i<=end; i++){
@@ -42,7 +46,7 @@ void clear_bit(unsigned long &addr, int start, int end){
 	}
 	mask <<= start;
 	mask ^= tmp;
-	addr &= mask;
+	*addr &= mask;
 }
 
 int page_size_flag (uint64_t entry){
@@ -65,23 +69,24 @@ unsigned long get_paddr(uint64_t addr)
 unsigned long get_swap_id(uint64_t addr){
 	return get_bit(addr, 62, 1);
 }
-void save_paddr(unsigned long &addr, unsigned long val){
+void save_paddr(unsigned long *addr, unsigned long val){
 	clear_bit(addr, 28, 62);
-	addr |= (val<<28);
+	val &= 0xeffffffff;
+	*addr |= (val<<28);
 }
-void save_swap_paddr(unsigned long &addr, unsigned long val){
+void save_swap_paddr(unsigned long *addr, unsigned long val){
 	clear_bit(addr, 1, 27);
-	addr |= ((val&0xeffffff)<<1);
+	*addr |= ((val&0xeffffff)<<1);
 }
-void save_huge_bit(unsigned long &addr, unsigned long val){
+void save_huge_bit(unsigned long *addr, unsigned long val){
 	clear_bit(addr, 0, 0);
-	addr |= (val & 0x1);
+	*addr |= (val & 0x1);
 }
-void set_change_bit(unsigned long &entry, bool val){
+void set_change_bit(unsigned long *entry, bool val){
 	if(val){
 		unsigned long mask = 1;
 		mask <<= 63;
-		entry |= mask;
+		*entry |= mask;
 	}
 	else{
 		clear_bit(entry, 63, 63);

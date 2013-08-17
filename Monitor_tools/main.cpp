@@ -18,6 +18,11 @@ pthread_t event_thread, mem_thread;
 int monitor_flag;
 int hypercall_fd;
 
+unsigned long reduce_tot_swap_count;
+
+round_t END_ROUND = 90000;	
+
+
 void handler(int sig){
 //	printf("signal bus error\n");
 	siglongjmp(sigbuf, 1);
@@ -50,6 +55,11 @@ void refund()
 	printf("Stop monitor\n");
 	exit(1);
 }
+void over_handler(int sig){
+	END_ROUND = 0;
+	monitor_flag = 2;
+}
+
 
 void calculate_size(DATAMAP data_map)
 {
@@ -81,8 +91,11 @@ int main(int argc, char *argv[])
 	struct guest_pagetable_walk gw;
 	
 	global_total_change_times = 0;
+	reduce_tot_swap_count = 0;
 
 	signal(SIGBUS, handler);
+	signal(SIGINT, over_handler);
+
 	if(argc<2){
 		printf("%s domID\n", argv[0]);
 		exit(1);
@@ -119,7 +132,9 @@ int main(int argc, char *argv[])
 	unsigned long tmp_max_mem = 0;
 //	list_size = file_cr3(cr3_list);
 
-	while(1){
+
+//	while(1){
+	while(END_ROUND-- > 0){
 	 	ttt++;
 		get_cr3_hypercall(cr3_list, list_size, hypercall_fd);
 
@@ -139,8 +154,8 @@ int main(int argc, char *argv[])
 			tmp_max_mem = result[0];
 		}
 //		calculate_size(data_map);
-		printf("Max:%lu[M] BottleneckMemory:%lu[M] ValidMemory:%lu[M] ChangeTimes:%lu Round %d\n\n", 
-					tmp_max_mem/256, result[0]/256, result[1]/256, global_total_change_times, round);
+		printf("Max:%lu[M] ChangeTimes:%lu BottleneckMemory:%lu[M] ValidMemory:%lu[M] Round %d\n\n", 
+					tmp_max_mem/256, global_total_change_times, result[0]/256, result[1]/256, round);
 
 
 		walk_cr3_list(data_map, cr3_list, list_size, round, gw);
@@ -151,10 +166,11 @@ int main(int argc, char *argv[])
 
 		do{
 			sleep(SAMPLE_INTERVAL);		
-//		}while(monitor_flag == 0);
-		}while(0);
+		}while(monitor_flag == 0);
+//		}while(0);
 	}
 
+	estimate_output(data_map);	
 
 	refund();
 	return 0;

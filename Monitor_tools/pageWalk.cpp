@@ -90,33 +90,33 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 	it = table->pte_data.find(vkey);
 	if(it == table->pte_data.end()){
 		mapData mapVal;
+		unsigned long *pte_node = (unsigned long *)&mapVal.pte_node;
+		*pte_node = 0;
 		mapVal.present_times = valid_bit;
 
-		save_paddr(mapVal.paddr, 0);
-		save_swap_paddr(mapVal.paddr, 0);
 		if(valid_bit == 1){
-			save_paddr(mapVal.paddr, paddr);
+			save_paddr(pte_node, paddr);
 		}
 		else{
-			save_swap_paddr(mapVal.paddr, paddr);
+			save_swap_paddr(pte_node, paddr);
 		}
-		save_huge_bit(mapVal.paddr, huge_bit);
-		set_change_bit(mapVal.paddr, false);
+		save_huge_bit(pte_node, huge_bit);
+		set_change_bit(pte_node, false);
 
 		table->pte_data.insert(map<unsigned long, mapData>::value_type(vkey, mapVal));
 		ret = 0;
 	}
 	else{
 		char &val_ref = table->pte_data[vkey].present_times;	
-		unsigned long &paddr_val = table->pte_data[vkey].paddr;
+		unsigned long *pte_node = (unsigned long *)table->pte_data[vkey].pte_node;
 
 		if(valid_bit == 1){
-			save_paddr(paddr_val, paddr);
+			save_paddr(pte_node, paddr);
 		}
 		else{
-			save_swap_paddr(paddr_val, paddr);
+			save_swap_paddr(pte_node, paddr);
 		}
-		save_huge_bit(paddr_val, huge_bit);
+		save_huge_bit(pte_node, huge_bit);
 
 
 		val = val_ref&1;
@@ -124,20 +124,20 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 		if( val==1 && valid_bit==0 ){	
 			//fprintf(stderr, "bit:%x non2s va:%lx\n", val_ref, gw->va);
 			add_change_number(val_ref);
-			set_change_bit(paddr_val, true);
+			set_change_bit(pte_node, true);
 			ret = 1;
 		}
 		//swap to non-swap bit
 		else if(val==0 && valid_bit==1){
 			/*Is this need to add change times here?????????????????*/
-			if(get_change_number(val_ref) != 0){
+//			if(get_change_number(val_ref) != 0){
 				add_change_number(val_ref);		
-				set_change_bit(paddr_val, true);
-			}
+				set_change_bit(pte_node, true);
+//			}
 			ret = 0;		
 		}
 		else{
-			set_change_bit(paddr_val, false);
+			set_change_bit(pte_node, false);
 		}
 
 		if(val!=valid_bit){
@@ -358,8 +358,9 @@ int retrieve_list(DATAMAP &list)
 
 /*Estimate bottleneck page set for each times*/
 static unsigned long estimate_bottleneck_set(SHARED_TREE &system_map,
-		struct hash_table &h, unsigned long &total_change_times, unsigned long cr3,
-		map<sharedID_t, int> &redundancy_check, unsigned long &bps)
+		struct hash_table &h, unsigned long &total_change_times, 
+		unsigned long cr3, map<sharedID_t, int> &redundancy_check, 
+		unsigned long &bps, unsigned long *each_change_times)
 {
 	unsigned long shared_pages = 0;
 	CR3_INFO &cr3_info = sample_result[round].cr3_info;
@@ -369,32 +370,35 @@ static unsigned long estimate_bottleneck_set(SHARED_TREE &system_map,
 	unsigned int change_times;
 	byte huge_bit, valid_bit, val_ref;
 	bool is_change_times_add = false;
+	unsigned long *pte_node;
 
 	if(h.check == 1){
 	sample_result[round].cr3_info.insert(pair<cr3_t, unsigned>(cr3, 0));
     while(hashIt != h.pte_data.end()){
+		pte_node = (unsigned long *)hashIt->second.pte_node;
 
 		valid_bit = (hashIt->second.present_times) & 1;
 		val_ref = hashIt->second.present_times;
 		change_times = get_change_number(val_ref);
-		huge_bit = get_huge_bit(hashIt->second.paddr);
+		huge_bit = get_huge_bit(*pte_node);
 		is_change_times_add = false;
 
 		/*Is sharedID ok when valid_bit = 1 ????????*/
-		sharedID = get_swap_id(hashIt->second.paddr);
-		paddr = get_paddr(hashIt->second.paddr);
+		sharedID = get_swap_id(*pte_node);
+//		sharedID = get_paddr(*pte_node);
+		paddr = get_paddr(*pte_node);
 
 		/* 
 		 * The data have not been so we will not add change times
 		 * But we will still add wrong size ????????????
 		 * */
-		if( h.check == 1 && is_change_bit_set(hashIt->second.paddr) ){
+		if( h.check == 1 && is_change_bit_set(*pte_node) ){
 			is_change_times_add = true;
 		}
-		else if(h.check == 0 && is_change_bit_set(hashIt->second.paddr) ){
+		else if(h.check == 0 && is_change_bit_set(*pte_node) ){
 			change_times -= 1;
 		}
-		set_change_bit(hashIt->second.paddr, false);
+		set_change_bit(pte_node, false);
 
 		/*Only for estimating working set size for this round*/
 		if(valid_bit){
@@ -404,6 +408,10 @@ static unsigned long estimate_bottleneck_set(SHARED_TREE &system_map,
 			}
 			else{
 				system_map_wks[paddr]++;
+				if(change_times < CHANGE_LIMIT){
+					shared_pages++;
+					h.pte_data.erase(hashIt);
+				}
 			}
 		}
 
@@ -425,12 +433,16 @@ static unsigned long estimate_bottleneck_set(SHARED_TREE &system_map,
 			}
 			/*Page is not shared*/
 			else{
-				redundancy_check[sharedID]++;
-				if(is_change_times_add)		
+				redundancy_check[sharedID] = 1;
+
+				each_change_times[change_times]++;
+				if(is_change_times_add){
 					total_change_times += 1;
+				}
 		
 				/*despite valid_bit, they are all bottleneck pages??????*/
 				if(valid_bit == 0){
+
 					if(huge_bit == 0){
 						(h.activity_page)[0]++;
 					}
@@ -461,7 +473,12 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 	Sampled_data sample_data;
 	unsigned long shared_pages = 0, bps = 0;
 	unsigned long cr3;
-	map<cr3_t, int>redundancy_check;
+	map<sharedID_t, int>redundancy_check;
+
+
+	unsigned long each_change_times[130] = {0};
+	FILE *tmpFD = fopen("TMP", "a+");
+	unsigned long last_times = global_total_change_times;
 
 	sample_result.insert(pair<round_t, Sampled_data>(round, sample_data));
 	while(it != list.end())
@@ -474,12 +491,12 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 		shared_pages +=  estimate_bottleneck_set( 
 							sample_result[round].shared_tree, 
 							h, total_change_times, cr3,
-							redundancy_check, bps);
+							redundancy_check, bps, 
+							each_change_times);
 		result[0] += h.activity_page[0];
 		result[1] += h.activity_page[1];
 		it++;
 	}
-	sample_result[round].set_value( result[0] );
 	global_total_change_times += total_change_times;
 	if(!system_map_wks.empty()){
 		system_map_wks.clear();
@@ -487,7 +504,34 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 	if(!redundancy_check.empty()){
 		redundancy_check.clear();
 	}
-	printf("shared_pages:%lu bps:%lu[M]\n", shared_pages, bps/256);
+	printf("shared_pages:%lu[M] bps:%lu[M]\n", shared_pages/256, bps/256);
+	sample_result[round].set_value( result[0], total_change_times );
+
+
+
+	unsigned long ta_mem=0, a_mem=0, mem=0;
+	for(int k=129; k>0; k--){
+		if(each_change_times[k]!=0){
+			mem+=each_change_times[k];
+			a_mem = k*each_change_times[k];
+			ta_mem += a_mem;
+//			fprintf( tmpFD, "  Times[%u]:%lu ToThisPageNum:%lu swapCount:%lu toThisSwappingCount:%lu\n", 
+//							 k, each_change_times[k], mem, a_mem, ta_mem);
+		}
+	}
+	
+	unsigned long give_frames = 175*256;
+	if(result[0] > give_frames ){
+		unsigned long thisTimesSwapCount = global_total_change_times - last_times;
+		double ratio = (double)result[0]/(double)(result[0] - give_frames);
+		reduce_tot_swap_count += (unsigned long)((double)thisTimesSwapCount/ratio);
+	}
+
+//	fprintf(tmpFD, "BPS:%lu[M] T_swapCount:%lu thisTimesSwapCount:%lu Round:%lu reduce_tot_swap_count:%lu\n\n", 
+//					result[0]/256, global_total_change_times, global_total_change_times - last_times, round, reduce_tot_swap_count);
+	fprintf(tmpFD, "Round:%u BPS:%lu[M] T_swapCount:%lu thisTimesSwapCount:%lu\n", 
+					round, result[0]/256, global_total_change_times, total_change_times);
+	fclose(tmpFD);
 
 	return check_cr3_num;
 }

@@ -24,7 +24,7 @@ using namespace std;
 #define USAGE_SLEEP 30
 #define SAMPLE_INTERVAL 3
 #define LOCK_PAGES	200 
-#define LOCK_PAGES_THRESHOLD 120
+#define LOCK_PAGES_THRESHOLD 110
 
 
 #define RECENT_CR3_SIZE 300
@@ -51,7 +51,8 @@ struct mapData
 	 * valid_bit==1 -> [63:63]:bool for is_change_times_change, [62:28]:paddr, [0:0]:huge_bit
 	 * valid_bit==0 -> [63:63]:bool for is_change_times_change, [62:28]:paddr, [27:1]:swap_paddr, [0:0]huge_bit
 	 * */
-	unsigned long paddr;
+	byte pte_node[8];
+//	unsigned long paddr;
 };
 typedef struct mapData mapData;
 typedef map<unsigned long, mapData> HASHMAP;
@@ -111,16 +112,19 @@ typedef map<cr3_t, unsigned long> CR3_INFO;
 class Sampled_data
 {
 public:
-	void set_value(unsigned long _total){
+	void set_value(unsigned long _total, unsigned long _swap_count){
 		total_bottleneck_pages = _total;
+		swap_count_this_times = _swap_count;
 	};
-	unsigned long get_value(){
-		return total_bottleneck_pages;
+	void get_value(unsigned long &_total, unsigned long &_swap_count){
+		_total = total_bottleneck_pages;
+		_swap_count = swap_count_this_times;
 	};
 	SHARED_TREE shared_tree;
 	CR3_INFO cr3_info;
 private:
 	unsigned long total_bottleneck_pages;
+	unsigned long swap_count_this_times;
 };
 
 
@@ -137,6 +141,9 @@ extern pthread_mutex_t monitor_flag_lock;
 extern int monitor_flag;
 extern int hypercall_fd;
 
+extern unsigned long reduce_tot_swap_count;
+
+
 /* BitManage */
 //1~7 bits represent change number
 int add_change_number(byte &value);
@@ -149,13 +156,13 @@ int get_access_bit(uint64_t entry);
 int get_huge_bit(uint64_t entry);
 unsigned long get_paddr(uint64_t addr);
 unsigned long get_swap_id(uint64_t addr);
-void save_paddr(unsigned long &addr, unsigned long val);
-void save_swap_paddr(unsigned long &addr, unsigned long val);
-void save_huge_bit(unsigned long &addr, unsigned long val);
+void save_paddr(unsigned long *addr, unsigned long val);
+void save_swap_paddr(unsigned long *addr, unsigned long val);
+void save_huge_bit(unsigned long *addr, unsigned long val);
 unsigned long get_vaddr(unsigned long l1offset, unsigned long l2offset, unsigned long l3offset, unsigned long l4offset);
 int entry_valid(unsigned long entry);
 int pte_entry_valid(unsigned long entry);
-void set_change_bit(unsigned long &entry, bool val);
+void set_change_bit(unsigned long *entry, bool val);
 bool is_change_bit_set(unsigned long entry);
 
 
@@ -186,3 +193,5 @@ int retrieve_list(DATAMAP &list);
 struct page_data{unsigned long owner; unsigned long max_change_times;};
 unsigned long calculate_all_page(DATAMAP &list, unsigned long *result);
 
+/*Output*/
+void estimate_output(DATAMAP &cr3_data);
