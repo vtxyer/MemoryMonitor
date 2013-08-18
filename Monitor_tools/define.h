@@ -83,24 +83,22 @@ public:
 	void add_share_relation(cr3_t target_cr3){
 		shared_cr3_list.push_back(target_cr3);
 	};
-	bool is_page_counted(CR3_LIST &scr3_l){
+	unsigned long is_page_counted(CR3_LIST &scr3_l){
 		CR3_LIST::iterator sIt = scr3_l.begin();
 		CR3_LIST::iterator tIt = shared_cr3_list.begin();
+		unsigned long remove_num = 0;
 		while( sIt != scr3_l.end() ) {
 			cr3_t check_cr3 = *sIt;
 			while(tIt != shared_cr3_list.end()){
 				if(check_cr3 == *tIt){
-					shared_cr3_list.erase(tIt);	
+					remove_num++;
+//					shared_cr3_list.erase(tIt);	
 				}
 				tIt++;
 			}
 			sIt++;
 		}
-		if(shared_cr3_list.empty()){
-			return false;
-		}
-		else
-			return true;
+		return remove_num;
 	}
 	/*shared cr3 list*/
 	CR3_LIST shared_cr3_list;

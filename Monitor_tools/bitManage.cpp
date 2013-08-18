@@ -4,7 +4,8 @@
 int add_change_number(byte &value)
 {
 	byte number;
-	number = (value>>1) & 0x7f;
+	unsigned long mask = 0x7f;
+	number = (unsigned long)(value>>1) & mask;
 	if(number<0x7f)
 	{
 		number += 1;
@@ -13,7 +14,7 @@ int add_change_number(byte &value)
 		value = number;
 	}
 	else{
-		printf("overflow but ++global_total_change_times\n");
+		printf("overflow but still ++global_total_change_times\n");
 		global_total_change_times++;
 	}
 }
@@ -21,8 +22,9 @@ unsigned long get_change_number(byte value)
 {
 	unsigned long change_times = 0;
 	byte number;
-	number = (value>>1) & 0x7f;
-	change_times += number;
+	unsigned long mask = 0x7f;
+	number = (unsigned long)(value>>1) & mask;
+	change_times |= number;
 	return change_times;
 } 
 unsigned long get_bit(unsigned long entry, int num, int position)

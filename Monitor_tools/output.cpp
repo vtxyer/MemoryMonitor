@@ -59,9 +59,10 @@ void estimate_output(DATAMAP &cr3_data)
 		SHARED_TREE::iterator slist = sample_node.shared_tree.begin();
 		while( slist != sample_node.shared_tree.end() )
 		{
+			unsigned long remove_num;
 			Shared_page_node &shared_node = slist->second;
-			if(shared_node.is_page_counted(dead_cr3_list)){
-				total_bottleneck_pages += 1;
+			if( (remove_num = shared_node.is_page_counted(dead_cr3_list)) > 1){
+				total_bottleneck_pages += remove_num - 1;
 			}
 			slist++;
 		}
@@ -72,6 +73,8 @@ void estimate_output(DATAMAP &cr3_data)
 	}
 
 	std::sort(output.begin(), output.end(), v_sort);
+
+
 
 	if(global_total_change_times == 0 ){
 		return;

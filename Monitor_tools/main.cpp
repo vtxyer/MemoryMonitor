@@ -20,7 +20,7 @@ int hypercall_fd;
 
 unsigned long reduce_tot_swap_count;
 
-round_t END_ROUND = 90000;	
+round_t END_ROUND = 90;	
 
 
 void handler(int sig){

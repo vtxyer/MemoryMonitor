@@ -1,5 +1,8 @@
 #include "define.h"
 
+unsigned long inconsider = 0;
+unsigned long free_pages = 0;
+
 void* map_page(unsigned long pa_base, int level, struct guest_pagetable_walk *gw)
 {	
 	pa_base >>= 12;
@@ -130,10 +133,14 @@ int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsi
 		//swap to non-swap bit
 		else if(val==0 && valid_bit==1){
 			/*Is this need to add change times here?????????????????*/
+//			if(get_change_number(val_ref) == 0){
+				inconsider++;
+//			}
 //			if(get_change_number(val_ref) != 0){
 				add_change_number(val_ref);		
 				set_change_bit(pte_node, true);
 //			}
+
 			ret = 0;		
 		}
 		else{
@@ -158,7 +165,8 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 	unsigned long l1offset, l2offset, l3offset, l4offset;
 	int l1num, l2num, l3num, l4num;
 	int flag;
-	unsigned int hugepage_counter = 0, free_pages = 0;
+	unsigned int hugepage_counter = 0;
+	free_pages = 0;
 
 
 	table->check = table->activity_page[0] = table->activity_page[1] = 0;
@@ -257,6 +265,19 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 						}
 
 						count++;
+
+						/*LINUX only for testing*/
+/*						if( ( !( (pte_entry_valid(gw.l1e)|get_bit(gw.l1e, 1, 8))) )
+                                        && ( !(get_bit(gw.l1e, 1, 6)) ) 
+                        )
+						{
+							compare_swap(table, &gw, l1offset, 0, 0);
+						}
+						else if(pte_entry_valid(gw.l1e)){
+							compare_swap(table, &gw, l1offset, 1, 0);
+						}*/
+
+
 						if( !pte_entry_valid(gw.l1e))
 						{
 							int ret;
@@ -297,8 +318,6 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 		goto BUSERR;
 	}
 
-//	if(free_pages > 256)
-//		printf("free_pages %lu[M]\n", free_pages/256);
 //	printf("count:%lu[M]\n", count/256);
 	return count;
 
@@ -372,7 +391,7 @@ static unsigned long estimate_bottleneck_set(SHARED_TREE &system_map,
 	bool is_change_times_add = false;
 	unsigned long *pte_node;
 
-	if(h.check == 1){
+//	if(h.check == 1){
 	sample_result[round].cr3_info.insert(pair<cr3_t, unsigned>(cr3, 0));
     while(hashIt != h.pte_data.end()){
 		pte_node = (unsigned long *)hashIt->second.pte_node;
@@ -460,7 +479,7 @@ static unsigned long estimate_bottleneck_set(SHARED_TREE &system_map,
 
 	}//end walk each page for CR3
 
-	}//end if h.check
+//	}//end if h.check
 
 	return shared_pages;
 }
@@ -504,7 +523,8 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 	if(!redundancy_check.empty()){
 		redundancy_check.clear();
 	}
-	printf("shared_pages:%lu[M] bps:%lu[M]\n", shared_pages/256, bps/256);
+	printf("shared_pages:%lu[M] bps:%lu[M] free_pages:%lu[M] inconsier:%lu\n", 
+			shared_pages/256, bps/256, free_pages, inconsider);
 	sample_result[round].set_value( result[0], total_change_times );
 
 
@@ -517,8 +537,10 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 			ta_mem += a_mem;
 //			fprintf( tmpFD, "  Times[%u]:%lu ToThisPageNum:%lu swapCount:%lu toThisSwappingCount:%lu\n", 
 //							 k, each_change_times[k], mem, a_mem, ta_mem);
+			printf("Times[%u]:%lu\n", k, each_change_times[k]);
 		}
 	}
+	printf("mem:%lu[M]\n", mem/256);
 	
 	unsigned long give_frames = 175*256;
 	if(result[0] > give_frames ){
