@@ -69,7 +69,7 @@ void check_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size)
  * valid_bit=0 => in swap
  * valid_bit=1 => is valid
  * */
-int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsigned long offset, char valid_bit, char huge_bit)
+inline int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsigned long offset, char valid_bit, char huge_bit)
 {
 	unsigned long vkey, paddr;
 	char val, tmp;

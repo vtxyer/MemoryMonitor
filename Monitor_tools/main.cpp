@@ -182,9 +182,10 @@ int main(int argc, char *argv[])
 			tmp_max_mem = result[0];
 		}
 //		calculate_size(data_map);
-		printf("Max:%lu[M] ChangeTimes:%lu BottleneckMemory:%lu[M] ValidMemory:%lu[M] Round %d\n\n", 
-					tmp_max_mem/256, global_total_change_times, result[0]/256, result[1]/256, round);
-
+//		printf("Max:%lu[M] ChangeTimes:%lu BottleneckMemory:%lu[M] ValidMemory:%lu[M] Round %d\n\n", 
+//					tmp_max_mem/256, global_total_change_times, result[0]/256, result[1]/256, round);
+		printf("Max:%lu[M] ChangeTimes:%lu BottleneckMemory:%lu[M] Round %d\n\n", 
+					tmp_max_mem/256, global_total_change_times, result[0]/256, round);
 
 		walk_cr3_list(data_map, cr3_list, list_size, round, gw);
 
