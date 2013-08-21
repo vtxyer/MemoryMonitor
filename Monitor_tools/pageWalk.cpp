@@ -333,7 +333,6 @@ int walk_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size,  unsign
 {
 	unsigned long cr3;
 	
-	#pragma omp parallel for num_threads(4)
 	for(int i=0; i<list_size; i++)
 	{
 		cr3 = cr3_list[i];
