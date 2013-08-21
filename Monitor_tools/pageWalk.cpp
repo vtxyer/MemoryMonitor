@@ -332,6 +332,8 @@ BUSERR:
 int walk_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size,  unsigned int round, struct guest_pagetable_walk &gw)
 {
 	unsigned long cr3;
+	
+	#pragma omp parallel for num_threads(4)
 	for(int i=0; i<list_size; i++)
 	{
 		cr3 = cr3_list[i];
@@ -423,19 +425,19 @@ static unsigned long estimate_bottleneck_set(SHARED_TREE &system_map,
 		set_change_bit(pte_node, false);
 
 		/*Only for estimating working set size for this round*/
-		if(valid_bit){
-			if(system_map_wks.count(paddr) == 0){
-				h.activity_page[valid_bit]++;
-				system_map_wks[paddr] = 1;
-			}
-			else{
-				system_map_wks[paddr]++;
-				if(change_times < CHANGE_LIMIT){
-//					shared_pages++;
-					h.pte_data.erase(hashIt);
-				}
-			}
-		}
+//		if(valid_bit){
+//			if(system_map_wks.count(paddr) == 0){
+//				h.activity_page[valid_bit]++;
+//				system_map_wks[paddr] = 1;
+//			}
+//			else{
+//				system_map_wks[paddr]++;
+//				if(change_times < CHANGE_LIMIT){
+////					shared_pages++;
+//					h.pte_data.erase(hashIt);
+//				}
+//			}
+//		}
 
 		if(change_times >= CHANGE_LIMIT ){
 			bps++;

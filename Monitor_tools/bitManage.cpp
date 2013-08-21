@@ -66,10 +66,11 @@ int get_huge_bit(uint64_t entry)
 }
 unsigned long get_paddr(uint64_t addr)
 {
-	return get_bit(addr, 35, 28);
+	return (addr<<1)>>29;
+//	return get_bit(addr, 35, 28);
 }
 unsigned long get_swap_id(uint64_t addr){
-	return get_bit(addr, 62, 1);
+	return (addr<<1)>>2;
 }
 void save_paddr(unsigned long *addr, unsigned long val){
 	clear_bit(addr, 28, 62);
