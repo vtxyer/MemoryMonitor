@@ -336,8 +336,9 @@ struct domain
 	/*<VT> add*/
 	spinlock_t recent_cr3_lock;
 	int sample_flag;
-	unsigned long recent_cr3_size;
-	unsigned long *recent_cr3;
+	unsigned long recent_cr3_1_size, recent_cr3_2_size;
+	unsigned long max_size;
+	unsigned long *recent_cr3, *recent_cr3_size, *recent_cr3_1, *recent_cr3_2;
 	atomic_t touched_page_num;
 	unsigned long lock_pages_threshold;
 };

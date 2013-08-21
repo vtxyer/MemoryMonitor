@@ -24,46 +24,45 @@ public:
 	round_t round;
 };
 
+
+int remove_redundant(cr3_t *cr3_list, int list_size)
+{
+	cr3_t new_cr3_list[9999];
+	int new_size = 0;
+	for(int i=0; i<list_size; i++){
+		cr3_t now_cr3 = cr3_list[i];
+		if(now_cr3 == 0 ){
+			continue;
+		}
+		bool dflag = false;
+		for(int k=i+1; k<list_size; k++){
+			if(now_cr3 == cr3_list[k]){
+				cr3_list[k] = 0;
+				dflag = true;
+			}
+		}
+		new_cr3_list[new_size] = now_cr3;
+		new_size++;
+	}
+	for(int i=0; i<list_size; i++){
+		if(i < new_size){
+			cr3_list[i] = new_cr3_list[i];
+		}
+		else	
+			cr3_list[i] = 0;
+	}
+	return new_size;
+}
+
 int main(int argc, char *argv[])  
 {
-
-	vector<Output_node> output;
-
-	fin.open("ex_data", ios::in);
-	string str;
-	int count = 0;
-	unsigned long tot_sc = 0;
-	while(getline(fin, str)){
-		Output_node tmp_node;
-		unsigned long reduce_sc;
-		sscanf(str.c_str(), "Round:%u tbs:%lu psc:%lu sc:%lu reduce_sc:%lu\n",
-				&tmp_node.round, &tmp_node.total_bottleneck_pages, &tmp_node.per_swap_count, &tmp_node.swap_count, &reduce_sc);
-		output.push_back(tmp_node);
-		count++;
-		tot_sc += tmp_node.per_swap_count;
+	unsigned long a[14] = {1,1, 3, 4, 2, 1 ,2, 5,16, 3, 3, 4, 26, 361};
+	int k = remove_redundant(a, 14);
+	for(int i=0; i<k; i++){
+		printf(" %lu\n", a[i]);
 	}
+	printf("size:%d\n", k);
 
-
-	for(int k=0; k<count; k++){
-		unsigned long extra=output[k].total_bottleneck_pages;
-
-		unsigned long remain_sc = 0;
-		for(int i=0; i<count; i++){
-			unsigned long tbs = output[i].total_bottleneck_pages;
-			if(tbs > extra){
-				double ratio = (double)tbs/(double)(tbs - extra);
-				remain_sc += (unsigned long)((double)output[i].per_swap_count/ratio);
-			}
-//			printf("Round:%u tbs:%lu[M] psc:%lu sc:%lu reduce_sc:%lu\n", 
-//					output[i].round, output[i].total_bottleneck_pages/256, output[i].per_swap_count, output[i].swap_count,
-//					reduce_sc);
-		}
-		printf("Size:%lu[M] RSCount:%lu  Recuce:%lu%\n", extra/256 + 512, remain_sc, ((tot_sc-remain_sc)*100)/tot_sc);
-	}
-
-
-
-	fin.close();
 	return 0;
 }
 

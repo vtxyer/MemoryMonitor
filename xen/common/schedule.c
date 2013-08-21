@@ -1120,8 +1120,6 @@ static void schedule(void)
 
 	/*<VT> add*/
 	unsigned long tmp_cr3;
-	unsigned long recent_cr3_size;
-	int i;
 
     ASSERT(!in_atomic());
 
@@ -1160,22 +1158,13 @@ static void schedule(void)
     next = next_slice.task;
 
 	/*<VT> add*/
-	recent_cr3_size = next->domain->recent_cr3_size;
-    tmp_cr3 = next->arch.hvm_vcpu.guest_cr[3];
-    if( (next->domain->sample_flag) == 1 ){ 
+    if( (next->domain->sample_flag) == 1 && *(next->domain->recent_cr3_size) < (next->domain->max_size))
+	{ 
+	    tmp_cr3 = next->arch.hvm_vcpu.guest_cr[3];
         spin_lock(&(next->domain->recent_cr3_lock));
-        for(i=0; i<recent_cr3_size; i++){
-            if(tmp_cr3 == next->domain->recent_cr3[i]){  //cr3 already in list                
-                break; 
-            }    
-        }    
-        if(i==recent_cr3_size){ //add new cr3 into list
-            for(i=recent_cr3_size-1; i>0; i--){
-                next->domain->recent_cr3[i] = next->domain->recent_cr3[i-1];
-            }    
-            next->domain->recent_cr3[0] = tmp_cr3;
-        }    
-        spin_unlock(&(next->domain->recent_cr3_lock));
+		next->domain->recent_cr3[ *(next->domain->recent_cr3_size) ] = tmp_cr3;	
+		(*(next->domain->recent_cr3_size))++;
+        spin_unlock(&(next->domain->recent_cr3_lock));	
     }
 
 

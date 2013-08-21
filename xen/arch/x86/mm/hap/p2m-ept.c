@@ -961,37 +961,71 @@ unsigned long do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf
 				printk("<VT> already start sampling\n");
 				return 1;
 			}
-			d->recent_cr3_size = arg;
-			d->recent_cr3 = xmalloc_array(unsigned long, arg);
-			if(d->recent_cr3 == NULL){
+
+			d->max_size = arg;
+			d->recent_cr3_1 = xmalloc_array(unsigned long, arg);
+			if(d->recent_cr3_1 == NULL){
 				printk("<VT> alloc recent_cr3 error\n");
 				return -1;
 			}
+			d->recent_cr3_2 = xmalloc_array(unsigned long, arg);
+			if(d->recent_cr3_2 == NULL){
+				printk("<VT> alloc recent_cr3 error\n");
+				return -1;
+			}
+			d->recent_cr3_1_size = d->recent_cr3_2_size = 0;
+			
+			d->recent_cr3_size = &(d->recent_cr3_1_size);
+			d->recent_cr3 = d->recent_cr3_1;
+
+            spin_lock(&(d->recent_cr3_lock));
 			d->sample_flag = 1;
+            spin_unlock(&(d->recent_cr3_lock));
 			d->lock_pages_threshold = longBuff[0];
 			break;
 		case 2:
 			/*stop sampling*/
             spin_lock(&(d->recent_cr3_lock));
 			d->sample_flag = 0;
-			d->recent_cr3_size = 0;
-			if(d->recent_cr3 != NULL)
-				xfree(d->recent_cr3);
+			d->recent_cr3_1_size = 0;
+			d->recent_cr3_2_size = 0;
+			if(d->recent_cr3_1 != NULL)
+				xfree(d->recent_cr3_1);
+			if(d->recent_cr3_2 != NULL)
+				xfree(d->recent_cr3_2);
+			d->recent_cr3_1 = NULL;
+			d->recent_cr3_2 = NULL;
 			d->recent_cr3 = NULL;
             spin_unlock(&(d->recent_cr3_lock));
 			break;
 		case 3:
             /*return cr3 back to Dom0*/
-            longBuff[0] = 0;
-            spin_lock(&(d->recent_cr3_lock));
-            for(i=0; i<d->recent_cr3_size; i++){
-                if(d->recent_cr3[i] != 0){
-                    longBuff[0]++;
-                    longBuff[longBuff[0]] = d->recent_cr3[i];
-                    d->recent_cr3[i] = 0;
-                }
-            }
-            spin_unlock(&(d->recent_cr3_lock));
+			do{
+				unsigned long buf_size;
+				unsigned long *ret_buf;
+				longBuff[0] = 0;
+				spin_lock(&(d->recent_cr3_lock));
+				buf_size = *(d->recent_cr3_size);
+				*(d->recent_cr3_size) = 0;
+				ret_buf = d->recent_cr3;
+				if(d->recent_cr3 == d->recent_cr3_1){
+					d->recent_cr3 = d->recent_cr3_2;
+					d->recent_cr3_size = &d->recent_cr3_2_size;
+				}
+				else{
+					d->recent_cr3 = d->recent_cr3_1;
+					d->recent_cr3_size = &d->recent_cr3_1_size;
+				}
+				spin_unlock(&(d->recent_cr3_lock));
+
+				for(i=0; i<buf_size; i++){
+					if(ret_buf[i] != 0){
+						longBuff[0]++;
+						longBuff[longBuff[0]] = ret_buf[i];
+						ret_buf[i] = 0;
+					}
+				}
+			}while(0);
             break;
 		case 4:
 			/*lock pages*/

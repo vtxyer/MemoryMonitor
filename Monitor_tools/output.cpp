@@ -26,6 +26,41 @@ bool v_sort(Output_node a, Output_node b)
 }
 
 
+void show_result( vector<Output_node> &output)
+{
+	std::sort(output.begin(), output.end(), v_sort);
+	int percent=100;
+
+	if(global_total_change_times == 0 ){
+		return;
+	}
+	for(int k=0; k<round; k++){
+		unsigned long extra=output[k].total_bottleneck_pages;
+
+		unsigned long remain_sc = 0;
+		for(int i=0; i<round; i++){
+			unsigned long tbs = output[i].total_bottleneck_pages;
+			if(tbs > extra){			
+				double ratio = (double)tbs/(double)(tbs - extra);
+				remain_sc += (unsigned long)((double)output[i].per_swap_count/ratio);
+			}
+		}
+
+		int now_percent = ((global_total_change_times-remain_sc)*100)/global_total_change_times; 
+		if(  now_percent >= percent && now_percent < percent+5 ||
+			 now_percent < percent
+		)
+		{
+			printf("AddSize:%lu[M] RSCount:%lu  Recuce:%lu%\n", 
+					extra/256, remain_sc, now_percent);
+			if(now_percent%5)
+				percent = now_percent - (now_percent % 5) - 5;
+			else
+				percent = now_percent - 5;
+		}
+	}
+}
+
 void estimate_output(DATAMAP &cr3_data)
 {
 	round_t i;
@@ -49,50 +84,37 @@ void estimate_output(DATAMAP &cr3_data)
 			round_t end_round = cr3_data.end_round;
 			if(end_round < i){
 				dead_cr3_list.push_back(cr3);
-				total_bottleneck_pages -= sample_node.cr3_info[cr3]; 
 			}
 			++all_cr3_data_it;
 		}
-
 
 		/*check shared pages*/
 		SHARED_TREE::iterator slist = sample_node.shared_tree.begin();
 		while( slist != sample_node.shared_tree.end() )
 		{
-			unsigned long remove_num;
 			Shared_page_node &shared_node = slist->second;
-			if( (remove_num = shared_node.is_page_counted(dead_cr3_list)) > 1){
-				total_bottleneck_pages += remove_num - 1;
+			unsigned long rnum;
+			if( (rnum = shared_node.is_page_counted(dead_cr3_list)) > 0){
+				printf("get shared page\n");
+				total_bottleneck_pages += rnum - 1;
 			}
 			slist++;
 		}
+
+		/*estimate bottleneck pages*/
+		list<cr3_t>::iterator dcr3t= dead_cr3_list.begin();
+		while(dcr3t != dead_cr3_list.end()){
+			cr3_t cr3 = *dcr3t;
+			if( total_bottleneck_pages < sample_node.cr3_info[cr3])
+				printf("error t:%lu c:%lu's cr3:%lx\n", total_bottleneck_pages, sample_node.cr3_info[cr3]);
+			total_bottleneck_pages -= sample_node.cr3_info[cr3]; 
+			++dcr3t;
+		}
+
 		sample_node.set_value(total_bottleneck_pages, scp);
 		dead_cr3_list.clear();
 		tsc += scp;	
 		output.push_back(Output_node(total_bottleneck_pages, scp, tsc, i));
 	}
-
-	std::sort(output.begin(), output.end(), v_sort);
-
-
-
-	if(global_total_change_times == 0 ){
-		return;
-	}
-	for(int k=0; k<round; k++){
-		unsigned long extra=output[k].total_bottleneck_pages;
-
-		unsigned long remain_sc = 0;
-		for(int i=0; i<round; i++){
-			unsigned long tbs = output[i].total_bottleneck_pages;
-			if(tbs > extra){			
-				double ratio = (double)tbs/(double)(tbs - extra);
-				remain_sc += (unsigned long)((double)output[i].per_swap_count/ratio);
-			}
-		}
-		printf("AddSize:%lu[M] RSCount:%lu  Recuce:%lu%\n", 
-				extra/256, remain_sc, ((global_total_change_times-remain_sc)*100)/global_total_change_times);
-	}
-
-
+	show_result(output);
 }

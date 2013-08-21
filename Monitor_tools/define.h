@@ -86,19 +86,19 @@ public:
 	unsigned long is_page_counted(CR3_LIST &scr3_l){
 		CR3_LIST::iterator sIt = scr3_l.begin();
 		CR3_LIST::iterator tIt = shared_cr3_list.begin();
-		unsigned long remove_num = 0;
+		unsigned long rnum = 0;
 		while( sIt != scr3_l.end() ) {
 			cr3_t check_cr3 = *sIt;
 			while(tIt != shared_cr3_list.end()){
 				if(check_cr3 == *tIt){
-					remove_num++;
+					rnum++;
 //					shared_cr3_list.erase(tIt);	
 				}
 				tIt++;
 			}
 			sIt++;
 		}
-		return remove_num;
+		return rnum;
 	}
 	/*shared cr3 list*/
 	CR3_LIST shared_cr3_list;

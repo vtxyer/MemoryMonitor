@@ -1,5 +1,5 @@
-#define XEN_COMPILE_DATE	"Mon Aug 12 00:16:51 CST 2013"
-#define XEN_COMPILE_TIME	"00:16:51"
+#define XEN_COMPILE_DATE	"Wed Aug 21 22:26:40 CST 2013"
+#define XEN_COMPILE_TIME	"22:26:40"
 #define XEN_COMPILE_BY		"root"
 #define XEN_COMPILE_DOMAIN	"(none)"
 #define XEN_COMPILE_HOST	"VTWorkStation"

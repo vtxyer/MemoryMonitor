@@ -20,7 +20,7 @@ int hypercall_fd;
 
 unsigned long reduce_tot_swap_count;
 
-round_t END_ROUND = 90;	
+round_t END_ROUND = 9000;	
 
 
 void handler(int sig){
@@ -76,7 +76,34 @@ void calculate_size(DATAMAP data_map)
 	}
 	printf("total size: %lu[M]\n", size/256);
 }
-
+int remove_redundant(cr3_t *cr3_list, int list_size)
+{
+	cr3_t new_cr3_list[9999];
+	int new_size = 0;
+	for(int i=0; i<list_size; i++){
+		cr3_t now_cr3 = cr3_list[i];
+		if(now_cr3 == 0 ){
+			continue;
+		}
+		bool dflag = false;
+		for(int k=i+1; k<list_size; k++){
+			if(now_cr3 == cr3_list[k]){
+				cr3_list[k] = 0;
+				dflag = true;
+			}
+		}
+		new_cr3_list[new_size] = now_cr3;
+		new_size++;
+	}
+	for(int i=0; i<list_size; i++){
+		if(i < new_size){
+			cr3_list[i] = new_cr3_list[i];
+		}
+		else	
+			cr3_list[i] = 0;
+	}
+	return new_size;
+}
 
 
 int main(int argc, char *argv[])  
@@ -137,6 +164,7 @@ int main(int argc, char *argv[])
 	while(END_ROUND-- > 0){
 	 	ttt++;
 		get_cr3_hypercall(cr3_list, list_size, hypercall_fd);
+	    list_size = remove_redundant(cr3_list, list_size);	
 
 //		cr3_list[0] = 0x3bb2c000;
 //		list_size = 1; //limit to size 5
@@ -166,8 +194,8 @@ int main(int argc, char *argv[])
 
 		do{
 			sleep(SAMPLE_INTERVAL);		
-		}while(monitor_flag == 0);
-//		}while(0);
+//		}while(monitor_flag == 0);
+		}while(0);
 	}
 
 	estimate_output(data_map);	

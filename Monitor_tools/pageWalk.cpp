@@ -48,7 +48,7 @@ void check_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size)
 	int i, ret;
 
 	for(i=0; i<list_size; i++){
-		cr3 = cr3_list[i];
+		cr3 = cr3_list[i];		
 		ret = check_cr3(list, cr3);
 		if(ret == 0){
 			struct hash_table tmp;
@@ -415,7 +415,10 @@ static unsigned long estimate_bottleneck_set(SHARED_TREE &system_map,
 			is_change_times_add = true;
 		}
 		else if(h.check == 0 && is_change_bit_set(*pte_node) ){
-			change_times -= 1;
+			if(change_times == 0)
+				continue;
+			else
+				change_times -= 1;
 		}
 		set_change_bit(pte_node, false);
 
@@ -428,7 +431,7 @@ static unsigned long estimate_bottleneck_set(SHARED_TREE &system_map,
 			else{
 				system_map_wks[paddr]++;
 				if(change_times < CHANGE_LIMIT){
-					shared_pages++;
+//					shared_pages++;
 					h.pte_data.erase(hashIt);
 				}
 			}
@@ -437,31 +440,32 @@ static unsigned long estimate_bottleneck_set(SHARED_TREE &system_map,
 		if(change_times >= CHANGE_LIMIT ){
 			bps++;
 			/*The page is shared with each other*/
-			cr3_info[cr3]++;
 			if(redundancy_check.count(sharedID) > 0){
-				if(system_map.count(sharedID) <= 0){
-					Shared_page_node shared_node;
-					system_map.insert(pair<sharedID_t, Shared_page_node>(sharedID, shared_node));
-					system_map.at(sharedID).add_share_relation(cr3);
+				/*valid_bit = 0 is bottleneck pages??????*/
+				if(valid_bit == 0){
+					if(system_map.count(sharedID) <= 0){
+						Shared_page_node shared_node;
+						system_map.insert(pair<sharedID_t, Shared_page_node>(sharedID, shared_node));
+						system_map.at(sharedID).add_share_relation(cr3);
+					}
+					else
+						system_map.at(sharedID).add_share_relation(cr3);
+					shared_pages++;
+					h.pte_data.erase(hashIt);
 				}
-				else
-					system_map.at(sharedID).add_share_relation(cr3);
-				shared_pages++;
-				h.pte_data.erase(hashIt);
 				hashIt++;
 			}
 			/*Page is not shared*/
 			else{
 				redundancy_check[sharedID] = 1;
-
 				each_change_times[change_times]++;
 				if(is_change_times_add){
 					total_change_times += 1;
 				}
 		
-				/*despite valid_bit, they are all bottleneck pages??????*/
+				/*valid_bit = 0 is bottleneck pages??????*/
 				if(valid_bit == 0){
-
+					cr3_info[cr3]++;
 					if(huge_bit == 0){
 						(h.activity_page)[0]++;
 					}
@@ -496,8 +500,6 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 
 
 	unsigned long each_change_times[130] = {0};
-	FILE *tmpFD = fopen("TMP", "a+");
-	unsigned long last_times = global_total_change_times;
 
 	sample_result.insert(pair<round_t, Sampled_data>(round, sample_data));
 	while(it != list.end())
@@ -535,25 +537,11 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 			mem+=each_change_times[k];
 			a_mem = k*each_change_times[k];
 			ta_mem += a_mem;
-//			fprintf( tmpFD, "  Times[%u]:%lu ToThisPageNum:%lu swapCount:%lu toThisSwappingCount:%lu\n", 
-//							 k, each_change_times[k], mem, a_mem, ta_mem);
 			printf("Times[%u]:%lu\n", k, each_change_times[k]);
 		}
 	}
 	printf("mem:%lu[M]\n", mem/256);
-	
-	unsigned long give_frames = 175*256;
-	if(result[0] > give_frames ){
-		unsigned long thisTimesSwapCount = global_total_change_times - last_times;
-		double ratio = (double)result[0]/(double)(result[0] - give_frames);
-		reduce_tot_swap_count += (unsigned long)((double)thisTimesSwapCount/ratio);
-	}
 
-//	fprintf(tmpFD, "BPS:%lu[M] T_swapCount:%lu thisTimesSwapCount:%lu Round:%lu reduce_tot_swap_count:%lu\n\n", 
-//					result[0]/256, global_total_change_times, global_total_change_times - last_times, round, reduce_tot_swap_count);
-	fprintf(tmpFD, "Round:%u BPS:%lu[M] T_swapCount:%lu thisTimesSwapCount:%lu\n", 
-					round, result[0]/256, global_total_change_times, total_change_times);
-	fclose(tmpFD);
 
 	return check_cr3_num;
 }
