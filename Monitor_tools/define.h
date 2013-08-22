@@ -22,7 +22,7 @@ using namespace std;
 #define CHANGE_LIMIT 1
 #define MAX_ROUND_INTERVAL 50 
 #define USAGE_SLEEP 30
-#define SAMPLE_INTERVAL 3
+#define SAMPLE_INTERVAL 1
 #define LOCK_PAGES	200 
 #define LOCK_PAGES_THRESHOLD 110
 

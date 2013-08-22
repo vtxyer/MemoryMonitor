@@ -20,7 +20,7 @@ int hypercall_fd;
 
 unsigned long reduce_tot_swap_count;
 
-round_t END_ROUND = 9000;	
+round_t END_ROUND = 99999;	
 
 
 void handler(int sig){
@@ -53,7 +53,7 @@ void refund()
 	pthread_join(mem_thread, NULL);
 	pthread_join(event_thread, NULL);
 	printf("Stop monitor\n");
-	exit(1);
+	exit(0);
 }
 void over_handler(int sig){
 	END_ROUND = 0;
@@ -166,7 +166,7 @@ int main(int argc, char *argv[])
 		get_cr3_hypercall(cr3_list, list_size, hypercall_fd);
 	    list_size = remove_redundant(cr3_list, list_size);	
 
-//		cr3_list[0] = 0x3bb2c000;
+//		cr3_list[0] = 0x138997000;
 //		list_size = 1; //limit to size 5
 
 		system_map_wks.clear();
@@ -194,7 +194,7 @@ int main(int argc, char *argv[])
 		retrieve_list(data_map);
 
 		do{
-			sleep(SAMPLE_INTERVAL);		
+//			sleep(SAMPLE_INTERVAL);		
 //		}while(monitor_flag == 0);
 		}while(0);
 	}

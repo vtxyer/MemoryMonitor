@@ -56,7 +56,9 @@ void show_result( vector<Output_node> &output)
 			if(now_percent%5)
 				percent = now_percent - (now_percent % 5) - 5;
 			else
-				percent = now_percent - 5;
+				percent = now_percent - 5;				
+			if(percent < 0)
+				return;
 		}
 	}
 }

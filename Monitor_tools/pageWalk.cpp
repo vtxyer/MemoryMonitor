@@ -69,12 +69,12 @@ void check_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size)
  * valid_bit=0 => in swap
  * valid_bit=1 => is valid
  * */
-inline int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, unsigned long offset, char valid_bit, char huge_bit)
+inline int compare_swap(struct hash_table *table, struct guest_pagetable_walk *gw, char valid_bit, char huge_bit)
 {
 	unsigned long vkey, paddr;
 	char val, tmp;
 	unsigned long entry_size = 8;
-	int ret = 0;
+	int ret = -1;
 	map<unsigned long, mapData>::iterator it;
 
 
@@ -122,7 +122,7 @@ inline int compare_swap(struct hash_table *table, struct guest_pagetable_walk *g
 		save_huge_bit(pte_node, huge_bit);
 
 
-		val = val_ref&1;
+		val = val_ref&(byte)1;
 		//non-swap to swap bit
 		if( val==1 && valid_bit==0 ){	
 			//fprintf(stderr, "bit:%x non2s va:%lx\n", val_ref, gw->va);
@@ -140,8 +140,7 @@ inline int compare_swap(struct hash_table *table, struct guest_pagetable_walk *g
 				add_change_number(val_ref);		
 				set_change_bit(pte_node, true);
 //			}
-
-			ret = 0;		
+			ret = 1;			
 		}
 		else{
 			set_change_bit(pte_node, false);
@@ -158,7 +157,7 @@ inline int compare_swap(struct hash_table *table, struct guest_pagetable_walk *g
 
 unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest_pagetable_walk &gw)
 {
-	unsigned long count=0, total=0;	
+	unsigned long swap_num=0, total_page=0;	
 	unsigned long *l1p=NULL, *l2p=NULL, *l3p=NULL, *l4p=NULL;
 
 	uint64_t pml4e = 0, pdpte = 0, pde = 0, pte = 0, access=0;
@@ -218,22 +217,38 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 
 					if( page_size_flag(gw.l2e) ) //2MB huge page
 					{
-
-						//for ignore already map page => huge page only see User space
+						/* Huge page only see in User space
+						 * Condition :data may first in huge page and then when it want to swap out
+						 * according to https://www.kernel.org/doc/Documentation/vm/hugetlbpage.txt
+						 * huge page cannot swap out, so it remove bit for huge and transfer to normal page
+						 * So there are some swap page for us is new address???????????
+						 *
+						 * Now Try:
+						 * when huge page bit  on set all below page exist
+						 * and then it transfer to normal we will have address not new swap for used
+						 *
+						 * */
 						if( get_bit( gw.l2e, 1, 2) ){
-							total += 512;
-							hugepage_counter++;					
-							gw.va = get_vaddr(0, l2offset, l3offset, l4offset);
-							if( !pte_entry_valid(gw.l2e)){
-								printf("huge swap\n");
-								compare_swap(table, &gw, l2offset, 0, 1);								
-							}
-							else{
-								compare_swap(table, &gw, l2offset, 1, 1);
+							for(int tmp_offset=0; tmp_offset<l1num; tmp_offset++){
+								gw.va = get_vaddr(tmp_offset, l2offset, l3offset, l4offset);
+								gw.l1e = tmp_offset << 12;
+								compare_swap(table, &gw, 1, 0);							
+							}						
+//							if( !pte_entry_valid(gw.l2e)){
+//								printf("huge swap\n");
+//								compare_swap(table, &gw, l2offset, 0, 1);							
+//								swap_num+=512;
+//							}
+//							else{
+//								compare_swap(table, &gw, l2offset, 1, 1);
+//								total_page+=512;
+//							}					
+							hugepage_counter++;			
+							if( (gw.l2e&1) == 0){
+								printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n");
 							}
 						}
-
-						continue;
+						continue;						
 					}
 
 					l1p = (unsigned long *)map_page(gw.l2e, 1, &gw);
@@ -244,7 +259,6 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 					{
 						gw.l1e = l1p[l1offset];
 						gw.va = get_vaddr(l1offset, l2offset, l3offset, l4offset);
-
 						/*Even gw.l1e==0 also continue or there will some problem with share memory*/
 						if( gw.va == 0 )
 							continue;
@@ -254,40 +268,46 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 						 * But there are some problem with shared memory if we didn't count it??????????
 						 */
 						map<unsigned long, mapData>::iterator tmp_it;
-						if(gw.l1e == 0 && table->pte_data.count(gw.va)>0 ){
-							free_pages++;
-							tmp_it = table->pte_data.find(gw.va);
-							table->pte_data.erase( tmp_it );
-							continue;
+						if(gw.l1e == 0){
+							if(table->pte_data.count(gw.va)>0 ){
+								free_pages++;
+								tmp_it = table->pte_data.find(gw.va);
+								table->pte_data.erase( tmp_it );							
+								continue;
+							}
 						}
 						if(gw.l1e == 0){
 							continue;
 						}
-
-						count++;
-
 						/*LINUX only for testing*/
-/*						if( ( !( (pte_entry_valid(gw.l1e)|get_bit(gw.l1e, 1, 8))) )
-                                        && ( !(get_bit(gw.l1e, 1, 6)) ) 
-                        )
-						{
-							compare_swap(table, &gw, l1offset, 0, 0);
-						}
-						else if(pte_entry_valid(gw.l1e)){
-							compare_swap(table, &gw, l1offset, 1, 0);
-						}*/
+//						if( ( !( (pte_entry_valid(gw.l1e)|get_bit(gw.l1e, 1, 8))) )
+//                                        && ( !(get_bit(gw.l1e, 1, 6)) ) 
+//                        )
+//						{
+//							int ret;
+//							ret = compare_swap(table, &gw, 0, 0);
+//							swap_num++;
+//							if(ret == 0)
+//								total_page++;
+//						}
+//						else if(pte_entry_valid(gw.l1e)){
+//							int ret;
+//							ret = compare_swap(table, &gw, 1, 0);
+////							if(ret == 0)
+////								total_page++;
+//						}
 
 
 						if( !pte_entry_valid(gw.l1e))
 						{
 							int ret;
-							ret = compare_swap(table, &gw, l1offset, 0, 0);
+							ret = compare_swap(table, &gw, 0, 0);
+							swap_num++;
 						}
 						else
 						{
 							int ret;
-							ret = compare_swap(table, &gw, l1offset, 1, 0);
-							total++;
+							ret = compare_swap(table, &gw, 1, 0);
 						}
 					}	 
 					munmap(l1p, XC_PAGE_SIZE);
@@ -318,21 +338,26 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 		goto BUSERR;
 	}
 
-//	printf("count:%lu[M]\n", count/256);
-	return count;
+//	if(total_page > 500*256)
+	if(hugepage_counter > 10)
+		printf("CR3:%lx swap:%lu[M] total:%lu[M] hugepage_counter:%lu\n", 
+					dtb, swap_num/256, total_page/256, hugepage_counter);
+	return swap_num;
 
 BUSERR:
 	//	if(table->non2s != 0)
 	//		printf("###All_pages:%lu swap_page:%lu non2s:%lu s2non:%lu total_page: %lu hugepage_counter:%u cr3:%lx###\n", 
 	//				total, count, table->non2s, table->s2non, table->total_valid_pages, hugepage_counter, dtb);
-	return count;
+	swap_num = 0;				
+	return swap_num;
 }
 
 
 int walk_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size,  unsigned int round, struct guest_pagetable_walk &gw)
 {
 	unsigned long cr3;
-	
+	unsigned long swap_num;
+
 	for(int i=0; i<list_size; i++)
 	{
 		cr3 = cr3_list[i];
@@ -340,7 +365,11 @@ int walk_cr3_list(DATAMAP &list, unsigned long *cr3_list, int list_size,  unsign
 		struct hash_table &h = list[cr3];
 		if(cr3 == 0x187000)
 			continue;
-		page_walk_ia32e(cr3, &h, gw);
+		swap_num = page_walk_ia32e(cr3, &h, gw);
+		if(swap_num == 0){
+			list[cr3].pte_data.clear();
+			list.erase(cr3);
+		}
 	}
 }
 
