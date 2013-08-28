@@ -17,9 +17,9 @@ void *receive_event(void*)
 		}
 		if(rc == 1){
 			pthread_mutex_lock(&monitor_flag_lock);
-			monitor_flag = 2;
+			monitor_flag = HIGH_USAGE_STILL_MONITOR_ROUND;
 			pthread_mutex_unlock(&monitor_flag_lock);
-
+			pthread_cond_signal(&cond);
 			port = xc_evtchn_pending(xch_event);
 			if (port == -1) {
 				perror("failed to read port from evtchn");
@@ -33,6 +33,8 @@ void *receive_event(void*)
 		}
 	}
 }
+
+
 
 void *sample_usage(void *)
 {

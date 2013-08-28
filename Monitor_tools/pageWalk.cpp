@@ -555,8 +555,8 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 	if(!redundancy_check.empty()){
 		redundancy_check.clear();
 	}
-	printf("shared_pages:%lu[M] bps:%lu[M] free_pages:%lu[M] inconsier:%lu\n", 
-			shared_pages/256, bps/256, free_pages, inconsider);
+	printf("shared_pages:%lu[M] bps:%lu[M] free_pages:%lu[M] SwapIn:%lu SwapOut%lu\n", 
+			shared_pages/256, bps/256, free_pages, inconsider, global_total_change_times-inconsider);
 	sample_result[round].set_value( result[0], total_change_times );
 
 

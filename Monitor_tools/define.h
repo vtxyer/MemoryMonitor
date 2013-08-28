@@ -17,15 +17,16 @@ extern "C"{
 }
 #include <map>
 #include <list>
+#include <csignal>
 using namespace std;
 
 #define CHANGE_LIMIT 1
 #define MAX_ROUND_INTERVAL 50 
 #define USAGE_SLEEP 30
-#define SAMPLE_INTERVAL 1
+#define SAMPLE_INTERVAL 5
 #define LOCK_PAGES	200 
 #define LOCK_PAGES_THRESHOLD 110
-
+#define HIGH_USAGE_STILL_MONITOR_ROUND 1
 
 #define RECENT_CR3_SIZE 300
 #define ADDR_MASK 0x0000ffffffffffff
@@ -140,7 +141,7 @@ extern int monitor_flag;
 extern int hypercall_fd;
 
 extern unsigned long reduce_tot_swap_count;
-
+extern pthread_cond_t cond;
 
 /* BitManage */
 //1~7 bits represent change number

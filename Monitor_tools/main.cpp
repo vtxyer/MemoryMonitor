@@ -2,7 +2,7 @@
 #include <set>
 #include <fstream>
 #include <iostream>
-#include <csignal>
+
 using namespace std;
 
 fstream fin;
@@ -19,13 +19,17 @@ int monitor_flag;
 int hypercall_fd;
 
 unsigned long reduce_tot_swap_count;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 round_t END_ROUND = 99999;	
 
-
 void handler(int sig){
-//	printf("signal bus error\n");
 	siglongjmp(sigbuf, 1);
+}
+void over_handler(int sig){
+	END_ROUND = 0;
+	monitor_flag = 2;
+	pthread_cond_signal(&cond);
 }
 
 
@@ -55,10 +59,7 @@ void refund()
 	printf("Stop monitor\n");
 	exit(0);
 }
-void over_handler(int sig){
-	END_ROUND = 0;
-	monitor_flag = 2;
-}
+
 
 
 void calculate_size(DATAMAP data_map)
@@ -151,17 +152,17 @@ int main(int argc, char *argv[])
 
 	/***********************Sample memory usage thread*******************************/
 	pthread_mutex_t monitor_flag_lock = PTHREAD_MUTEX_INITIALIZER;
+	pthread_mutex_t wait_lock = PTHREAD_MUTEX_INITIALIZER;
 	monitor_flag = 0;
 	pthread_create(&mem_thread, NULL, sample_usage, NULL);
 	/***********************Sample memory usage thread*******************************/
 
 	int ttt=0; 
 	unsigned long tmp_max_mem = 0;
-//	list_size = file_cr3(cr3_list);
 
 
 //	while(1){
-	while(END_ROUND-- > 0){
+	while(round < END_ROUND){
 	 	ttt++;
 		get_cr3_hypercall(cr3_list, list_size, hypercall_fd);
 	    list_size = remove_redundant(cr3_list, list_size);	
@@ -181,9 +182,6 @@ int main(int argc, char *argv[])
 		if(tmp_max_mem < result[0]){
 			tmp_max_mem = result[0];
 		}
-//		calculate_size(data_map);
-//		printf("Max:%lu[M] ChangeTimes:%lu BottleneckMemory:%lu[M] ValidMemory:%lu[M] Round %d\n\n", 
-//					tmp_max_mem/256, global_total_change_times, result[0]/256, result[1]/256, round);
 		printf("Max:%lu[M] ChangeTimes:%lu BottleneckMemory:%lu[M] Round %d\n\n", 
 					tmp_max_mem/256, global_total_change_times, result[0]/256, round);
 
@@ -193,14 +191,17 @@ int main(int argc, char *argv[])
 		round++;
 		retrieve_list(data_map);
 
-		do{
+
+		if(monitor_flag == 0){
+			pthread_cond_wait(&cond, &wait_lock);
+		}
+//		do{
 //			sleep(SAMPLE_INTERVAL);		
 //		}while(monitor_flag == 0);
-		}while(0);
+//		}while(0);
 	}
 
 	estimate_output(data_map);	
-
 	refund();
 	return 0;
 }
