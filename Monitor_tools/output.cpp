@@ -34,9 +34,8 @@ void show_result( vector<Output_node> &output)
 	if(global_total_change_times == 0 ){
 		return;
 	}
-	for(int k=0; k<round; k++){
-		unsigned long extra=output[k].total_bottleneck_pages;
-
+	unsigned long extra = 0;
+	for(int k=0; k<1000; k++){
 		unsigned long remain_sc = 0;
 		for(int i=0; i<round; i++){
 			unsigned long tbs = output[i].total_bottleneck_pages;
@@ -47,19 +46,17 @@ void show_result( vector<Output_node> &output)
 		}
 
 		int now_percent = ((global_total_change_times-remain_sc)*100)/global_total_change_times; 
-		if(  now_percent >= percent && now_percent < percent+5 ||
-			 now_percent < percent
-		)
-		{
+
+		if(extra > output[0].total_bottleneck_pages){
 			printf("AddSize:%lu[M] RSCount:%lu  Recuce:%lu%\n", 
-					extra/256, remain_sc, now_percent);
-			if(now_percent%5)
-				percent = now_percent - (now_percent % 5) - 5;
-			else
-				percent = now_percent - 5;				
-			if(percent < 0)
-				return;
+					output[0].total_bottleneck_pages/256, 0, 100);
+			break;
 		}
+		else{
+			printf("AddSize:%lu[M] RSCount:%lu  Recuce:%lu%\n", 
+				extra/256, remain_sc, now_percent);
+		}
+		extra += 64*256;
 	}
 }
 
