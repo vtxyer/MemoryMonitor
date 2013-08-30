@@ -17,6 +17,16 @@ public:
 	unsigned long swap_count;
 	round_t round;
 };
+class Times_to_num
+{
+public:
+	Times_to_num(int _times, unsigned long _size){
+		times = _times;
+		size = _size;
+	}
+	int times;
+	unsigned long size;
+};
 bool v_sort(Output_node a, Output_node b)
 {
 	if(a.total_bottleneck_pages > b.total_bottleneck_pages)
@@ -24,7 +34,49 @@ bool v_sort(Output_node a, Output_node b)
 	else
 		return false;
 }
+bool v_sort2(Times_to_num a, Times_to_num b)
+{
+	if(a.size < b.size)
+		return true;
+	else
+		return false;
+}
 
+double calculate_percent(map<byte, unsigned int> &times_to_num, unsigned long reduce_size, round_t round)
+{
+	unsigned long reduce_swap_count = 0;
+	unsigned long per_total_swap_count = 0;
+
+	vector<Times_to_num> times_to_num_v;
+
+	for(byte k=0; k<127; k++){
+		if(times_to_num.count(k) > 0 ){
+			per_total_swap_count += times_to_num[k]*k;
+			times_to_num_v.push_back(Times_to_num(k, times_to_num[k]));
+		}
+	}
+	std::sort(times_to_num_v.begin(), times_to_num_v.end(), v_sort2);
+
+
+//	for(byte k=127; k>0; k--){
+//	for(byte k=0; k<127; k++){
+	for(vector<Times_to_num>::iterator it=times_to_num_v.begin(); it!=times_to_num_v.end(); ++it){
+		Times_to_num tmp = *it;
+		if(reduce_size > 0){
+			if(reduce_size > tmp.size){
+				reduce_size -= tmp.size;
+				reduce_swap_count += tmp.size * tmp.times;
+			}
+			else{
+				reduce_swap_count += reduce_size*tmp.times;
+				reduce_size = 0;
+			}
+		}
+	}
+
+
+	return (double)per_total_swap_count/(double)(per_total_swap_count-reduce_swap_count);
+}
 
 void show_result( vector<Output_node> &output)
 {
@@ -37,11 +89,12 @@ void show_result( vector<Output_node> &output)
 	unsigned long extra = 0;
 	for(int k=0; k<1000; k++){
 		unsigned long remain_sc = 0;
+
 		for(int i=0; i<round; i++){
 			unsigned long tbs = output[i].total_bottleneck_pages;
-			if(tbs > extra){			
-				double ratio = (double)tbs/(double)(tbs - extra);
-				remain_sc += (unsigned long)((double)output[i].per_swap_count/ratio);
+			if(tbs > extra){
+				double ratio = calculate_percent((sample_result[output[i].round]).swap_count_tims_to_num, extra, output[i].round);
+				remain_sc += (unsigned long)(((double)output[i].per_swap_count)/ratio);
 			}
 		}
 

@@ -121,6 +121,7 @@ public:
 	};
 	SHARED_TREE shared_tree;
 	CR3_INFO cr3_info;
+	map<byte, unsigned int> swap_count_tims_to_num;
 private:
 	unsigned long total_bottleneck_pages;
 	unsigned long swap_count_this_times;

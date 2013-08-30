@@ -171,7 +171,7 @@ int main(int argc, char *argv[])
 //		list_size = 1; //limit to size 5
 
 		system_map_wks.clear();
-		total_change_page = result[0] = result[1] = result[2] = 0;;
+		total_change_page = result[0] = result[1] = result[2] = 0;
 
 
 		check_cr3_list(data_map, cr3_list, list_size);

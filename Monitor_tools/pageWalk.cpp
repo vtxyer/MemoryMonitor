@@ -488,13 +488,15 @@ static unsigned long estimate_bottleneck_set(SHARED_TREE &system_map,
 			/*Page is not shared*/
 			else{
 				redundancy_check[sharedID] = 1;
-				each_change_times[change_times]++;
 				if(is_change_times_add){
 					total_change_times += 1;
 				}
 		
 				/*valid_bit = 0 is bottleneck pages??????*/
 				if(valid_bit == 0){
+
+					each_change_times[change_times]++;
+
 					cr3_info[cr3]++;
 					if(huge_bit == 0){
 						(h.activity_page)[0]++;
@@ -560,17 +562,14 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 	sample_result[round].set_value( result[0], total_change_times );
 
 
-
-	unsigned long ta_mem=0, a_mem=0, mem=0;
-	for(int k=129; k>0; k--){
-		if(each_change_times[k]!=0){
-			mem+=each_change_times[k];
-			a_mem = k*each_change_times[k];
-			ta_mem += a_mem;
-			printf("Times[%u]:%lu\n", k, each_change_times[k]);
+	if(result[0] > 0){
+		for(int k=127; k>0; k--){
+			if(each_change_times[k]!=0){
+				printf("Times[%u]:%lu\n", k, each_change_times[k]);
+				sample_result[round].swap_count_tims_to_num[(byte)k] = each_change_times[k];
+			}
 		}
 	}
-	printf("mem:%lu[M]\n", mem/256);
 
 
 	return check_cr3_num;
