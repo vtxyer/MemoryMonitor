@@ -181,9 +181,9 @@ int main(int argc, char *argv[])
 
 		if(tmp_max_mem < result[0]){
 			tmp_max_mem = result[0];
-		}
-		printf("Max:%lu[M] ChangeTimes:%lu BottleneckMemory:%lu[M] Round %d\n\n", 
+			printf("Max:%lu[M] ChangeTimes:%lu BottleneckMemory:%lu[M] Round %d\n\n", 
 					tmp_max_mem/256, global_total_change_times, result[0]/256, round);
+		}
 
 		walk_cr3_list(data_map, cr3_list, list_size, round, gw);
 

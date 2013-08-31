@@ -34,6 +34,13 @@ bool v_sort(Output_node a, Output_node b)
 	else
 		return false;
 }
+bool v_sort1(Times_to_num a, Times_to_num b)
+{
+	if(a.size > b.size)
+		return true;
+	else
+		return false;
+}
 bool v_sort2(Times_to_num a, Times_to_num b)
 {
 	if(a.size < b.size)
@@ -42,7 +49,7 @@ bool v_sort2(Times_to_num a, Times_to_num b)
 		return false;
 }
 
-double calculate_percent(map<byte, unsigned int> &times_to_num, unsigned long reduce_size, round_t round)
+double calculate_percent(map<byte, unsigned int> &times_to_num, unsigned long reduce_size, int flag)
 {
 	unsigned long reduce_swap_count = 0;
 	unsigned long per_total_swap_count = 0;
@@ -55,21 +62,72 @@ double calculate_percent(map<byte, unsigned int> &times_to_num, unsigned long re
 			times_to_num_v.push_back(Times_to_num(k, times_to_num[k]));
 		}
 	}
-	std::sort(times_to_num_v.begin(), times_to_num_v.end(), v_sort2);
 
 
-//	for(byte k=127; k>0; k--){
-//	for(byte k=0; k<127; k++){
-	for(vector<Times_to_num>::iterator it=times_to_num_v.begin(); it!=times_to_num_v.end(); ++it){
-		Times_to_num tmp = *it;
-		if(reduce_size > 0){
-			if(reduce_size > tmp.size){
-				reduce_size -= tmp.size;
-				reduce_swap_count += tmp.size * tmp.times;
+
+	if(flag == 0){
+		for(byte k=127; k>0; k--){
+	//	for(byte k=0; k<127; k++){
+	//	for(vector<Times_to_num>::iterator it=times_to_num_v.begin(); it!=times_to_num_v.end(); ++it){
+			if(reduce_size > 0){
+				if(reduce_size > times_to_num[k]){
+					reduce_size -= times_to_num[k];
+					reduce_swap_count += times_to_num[k] * k;
+				}
+				else{
+					reduce_swap_count += reduce_size*k;
+					reduce_size = 0;
+				}
 			}
-			else{
-				reduce_swap_count += reduce_size*tmp.times;
-				reduce_size = 0;
+		}
+	}
+	else if(flag == 1){
+	//	for(byte k=127; k>0; k--){
+		for(byte k=0; k<127; k++){
+	//	for(vector<Times_to_num>::iterator it=times_to_num_v.begin(); it!=times_to_num_v.end(); ++it){
+			if(reduce_size > 0){
+				if(reduce_size > times_to_num[k]){
+					reduce_size -= times_to_num[k];
+					reduce_swap_count += times_to_num[k] * k;
+				}
+				else{
+					reduce_swap_count += reduce_size*k;
+					reduce_size = 0;
+				}
+			}
+		}
+	}
+	//	for(byte k=127; k>0; k--){
+	//	for(byte k=0; k<127; k++){
+	else if(flag == 2){
+		std::sort(times_to_num_v.begin(), times_to_num_v.end(), v_sort1);
+		for(vector<Times_to_num>::iterator it=times_to_num_v.begin(); it!=times_to_num_v.end(); ++it){
+			Times_to_num tmp = *it;
+			if(reduce_size > 0){
+				if(reduce_size > tmp.size){
+					reduce_size -= tmp.size;
+					reduce_swap_count += tmp.size * tmp.times;
+				}
+				else{
+					reduce_swap_count += reduce_size*tmp.times;
+					reduce_size = 0;
+				}
+			}
+		}
+	}
+	else if(flag == 3){
+		std::sort(times_to_num_v.begin(), times_to_num_v.end(), v_sort2);
+		for(vector<Times_to_num>::iterator it=times_to_num_v.begin(); it!=times_to_num_v.end(); ++it){
+			Times_to_num tmp = *it;
+			if(reduce_size > 0){
+				if(reduce_size > tmp.size){
+					reduce_size -= tmp.size;
+					reduce_swap_count += tmp.size * tmp.times;
+				}
+				else{
+					reduce_swap_count += reduce_size*tmp.times;
+					reduce_size = 0;
+				}
 			}
 		}
 	}
@@ -87,28 +145,38 @@ void show_result( vector<Output_node> &output)
 		return;
 	}
 	unsigned long extra = 0;
-	for(int k=0; k<1000; k++){
-		unsigned long remain_sc = 0;
+	for(int k=0; k<10000; k++){
+		unsigned long remain_sc[5] = {0};
 
 		for(int i=0; i<round; i++){
 			unsigned long tbs = output[i].total_bottleneck_pages;
 			if(tbs > extra){
-				double ratio = calculate_percent((sample_result[output[i].round]).swap_count_tims_to_num, extra, output[i].round);
-				remain_sc += (unsigned long)(((double)output[i].per_swap_count)/ratio);
+				for(int g=0; g<4; g++){
+					double ratio = calculate_percent((sample_result[output[i].round]).swap_count_tims_to_num, extra, g);
+					remain_sc[g] += (unsigned long)(((double)output[i].per_swap_count)/ratio);
+				}
+				double ratio = (double)(output[i].total_bottleneck_pages)/(double)(output[i].total_bottleneck_pages-extra);
+				remain_sc[4] += (unsigned long)(((double)output[i].per_swap_count)/ratio);
 			}
 		}
 
-		int now_percent = ((global_total_change_times-remain_sc)*100)/global_total_change_times; 
-
-		if(extra > output[0].total_bottleneck_pages){
-			printf("AddSize:%lu[M] RSCount:%lu  Recuce:%lu%\n", 
-					output[0].total_bottleneck_pages/256, 0, 100);
+		bool over = false;
+		for(int g=0; g<5; g++){
+			int now_percent = ((global_total_change_times-remain_sc[g])*100)/global_total_change_times; 
+			if(extra > output[0].total_bottleneck_pages){
+				printf("Type:%d AddSize:%lu[M] RSCount:%lu  Recuce:%lu%\n", 
+						g, output[0].total_bottleneck_pages/256, 0, 100);
+				over = true;
+			}
+			else{
+				printf("Type:%d AddSize:%lu[M] RSCount:%lu  Recuce:%lu%\n", 
+					g, extra/256, remain_sc[g], now_percent);
+			}
+		}
+		if(over){
 			break;
 		}
-		else{
-			printf("AddSize:%lu[M] RSCount:%lu  Recuce:%lu%\n", 
-				extra/256, remain_sc, now_percent);
-		}
+		printf("\n");
 		extra += 64*256;
 	}
 }

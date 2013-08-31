@@ -339,9 +339,9 @@ unsigned long page_walk_ia32e(addr_t dtb, struct hash_table *table, struct guest
 	}
 
 //	if(total_page > 500*256)
-	if(hugepage_counter > 10)
-		printf("CR3:%lx swap:%lu[M] total:%lu[M] hugepage_counter:%lu\n", 
-					dtb, swap_num/256, total_page/256, hugepage_counter);
+//	if(hugepage_counter > 10)
+//		printf("CR3:%lx swap:%lu[M] total:%lu[M] hugepage_counter:%lu\n", 
+//					dtb, swap_num/256, total_page/256, hugepage_counter);
 	return swap_num;
 
 BUSERR:
@@ -557,15 +557,15 @@ unsigned long calculate_all_page(DATAMAP &list, unsigned long *result)
 	if(!redundancy_check.empty()){
 		redundancy_check.clear();
 	}
-	printf("shared_pages:%lu[M] bps:%lu[M] free_pages:%lu[M] SwapIn:%lu SwapOut:%lu\n", 
-			shared_pages/256, bps/256, free_pages, inconsider, global_total_change_times-inconsider);
+//	printf("shared_pages:%lu[M] bps:%lu[M] free_pages:%lu[M] SwapIn:%lu SwapOut:%lu\n", 
+//			shared_pages/256, bps/256, free_pages, inconsider, global_total_change_times-inconsider);
 	sample_result[round].set_value( result[0], total_change_times );
 
 
 	if(result[0] > 0){
 		for(int k=127; k>0; k--){
 			if(each_change_times[k]!=0){
-				printf("Times[%u]:%lu\n", k, each_change_times[k]);
+//				printf("Times[%u]:%lu\n", k, each_change_times[k]);
 				sample_result[round].swap_count_tims_to_num[(byte)k] = each_change_times[k];
 			}
 		}
