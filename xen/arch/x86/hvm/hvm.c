@@ -1146,7 +1146,6 @@ bool_t hvm_hap_nested_page_fault(unsigned long gpa,
 				if( counter > v->domain->lock_pages_threshold && counter != 55555){
 					send_guest_global_virq(dom0, 20);
 					atomic_set(&v->domain->touched_page_num, 55555);
-					printk("<VT> memory usage over limit\n");
 				}
 			}
 		}while(0);

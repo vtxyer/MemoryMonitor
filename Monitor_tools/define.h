@@ -170,6 +170,7 @@ bool is_change_bit_set(unsigned long entry);
 /* Hypercall */
 extern "C"{
 int init_hypercall(int recent_cr3_size, int fd);
+int free_hypercall(int fd);
 int lock_pages_hypercall(int parts_num, int fd);
 void get_cr3_hypercall(unsigned long *cr3_list, int &list_size, int fd);
 }

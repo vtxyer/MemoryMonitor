@@ -21,7 +21,7 @@ int hypercall_fd;
 unsigned long reduce_tot_swap_count;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
-round_t END_ROUND = 99999;	
+round_t END_ROUND = 999999;	
 
 void handler(int sig){
 	siglongjmp(sigbuf, 1);
@@ -56,6 +56,7 @@ void refund()
 	pthread_cancel(event_thread);
 	pthread_join(mem_thread, NULL);
 	pthread_join(event_thread, NULL);
+	free_hypercall(hypercall_fd);
 	printf("Stop monitor\n");
 	exit(0);
 }
@@ -181,20 +182,23 @@ int main(int argc, char *argv[])
 
 		if(tmp_max_mem < result[0]){
 			tmp_max_mem = result[0];
-			printf("Max:%lu[M] ChangeTimes:%lu BottleneckMemory:%lu[M] Round %d\n\n", 
-					tmp_max_mem/256, global_total_change_times, result[0]/256, round);
+			printf("Max:%lu[M] ChangeTimes:%lu BottleneckMemory:%lu[M] list_size:%d Round:%d\n\n", 
+					tmp_max_mem/256, global_total_change_times, result[0]/256, list_size, round);
 		}
 
 		walk_cr3_list(data_map, cr3_list, list_size, round, gw);
 
+		if(result[0]/256 > 0){
+			round++;
+		}
 
-		round++;
 		retrieve_list(data_map);
 
 
 		if(monitor_flag == 0){
-			pthread_cond_wait(&cond, &wait_lock);
+//			pthread_cond_wait(&cond, &wait_lock);
 		}
+
 //		do{
 //			sleep(SAMPLE_INTERVAL);		
 //		}while(monitor_flag == 0);

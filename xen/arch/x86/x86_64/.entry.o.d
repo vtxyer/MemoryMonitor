@@ -1,17 +1,17 @@
-entry.o: entry.S /home/Xen/MemoryMonitor/xen/include/xen/config.h \
- /home/Xen/MemoryMonitor/xen/include/asm/config.h \
- /home/Xen/MemoryMonitor/xen/include/xen/errno.h \
- /home/Xen/MemoryMonitor/xen/include/xen/softirq.h \
- /home/Xen/MemoryMonitor/xen/include/asm/asm_defns.h \
- /home/Xen/MemoryMonitor/xen/include/asm/asm-offsets.h \
- /home/Xen/MemoryMonitor/xen/include/asm/processor.h \
- /home/Xen/MemoryMonitor/xen/include/asm/x86_64/asm_defns.h \
- /home/Xen/MemoryMonitor/xen/include/asm/percpu.h \
- /home/Xen/MemoryMonitor/xen/include/asm/apicdef.h \
- /home/Xen/MemoryMonitor/xen/include/asm/page.h \
- /home/Xen/MemoryMonitor/xen/include/asm/x86_64/page.h \
- /home/Xen/MemoryMonitor/xen/include/public/xen.h \
- /home/Xen/MemoryMonitor/xen/include/public/xen-compat.h \
- /home/Xen/MemoryMonitor/xen/include/public/arch-x86/xen.h \
- /home/Xen/MemoryMonitor/xen/include/public/arch-x86/../xen.h \
- /home/Xen/MemoryMonitor/xen/include/public/arch-x86/xen-x86_64.h
+entry.o: entry.S /XenSource/MemoryMonitor/xen/include/xen/config.h \
+ /XenSource/MemoryMonitor/xen/include/asm/config.h \
+ /XenSource/MemoryMonitor/xen/include/xen/errno.h \
+ /XenSource/MemoryMonitor/xen/include/xen/softirq.h \
+ /XenSource/MemoryMonitor/xen/include/asm/asm_defns.h \
+ /XenSource/MemoryMonitor/xen/include/asm/asm-offsets.h \
+ /XenSource/MemoryMonitor/xen/include/asm/processor.h \
+ /XenSource/MemoryMonitor/xen/include/asm/x86_64/asm_defns.h \
+ /XenSource/MemoryMonitor/xen/include/asm/percpu.h \
+ /XenSource/MemoryMonitor/xen/include/asm/apicdef.h \
+ /XenSource/MemoryMonitor/xen/include/asm/page.h \
+ /XenSource/MemoryMonitor/xen/include/asm/x86_64/page.h \
+ /XenSource/MemoryMonitor/xen/include/public/xen.h \
+ /XenSource/MemoryMonitor/xen/include/public/xen-compat.h \
+ /XenSource/MemoryMonitor/xen/include/public/arch-x86/xen.h \
+ /XenSource/MemoryMonitor/xen/include/public/arch-x86/../xen.h \
+ /XenSource/MemoryMonitor/xen/include/public/arch-x86/xen-x86_64.h

@@ -923,7 +923,6 @@ int lock_pages(struct domain *d, unsigned int parts)
 	tot_pages = (d->tot_pages) - 0x2000;
 	parts_size = tot_pages/parts;
 	offset = parts_size/2;
-	printk("<VT> parts_size:%lu, tot_pages:%lu\n", parts_size, tot_pages);
 
 //	p2m_lock(p2m);
 	for(i=0; i<parts; i++){
@@ -935,7 +934,6 @@ int lock_pages(struct domain *d, unsigned int parts)
 	}
 	atomic_set(&d->touched_page_num, 1);
 //	p2m_unlock(p2m);
-	printk("<VT> lock %d ok\n", i);
 	return 0;
 }
 
@@ -957,21 +955,20 @@ unsigned long do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf
     switch(op){
         case 1:
 			/*Init monitor environment*/
-			if(d->recent_cr3_size != 0){
-				printk("<VT> already start sampling\n");
-				return 1;
-			}
-
 			d->max_size = arg;
 			d->recent_cr3_1 = xmalloc_array(unsigned long, arg);
 			if(d->recent_cr3_1 == NULL){
 				printk("<VT> alloc recent_cr3 error\n");
 				return -1;
-			}
+			}		
 			d->recent_cr3_2 = xmalloc_array(unsigned long, arg);
 			if(d->recent_cr3_2 == NULL){
 				printk("<VT> alloc recent_cr3 error\n");
 				return -1;
+			}
+			
+			for(i=0; i<d->max_size; i++){
+				d->recent_cr3_2[i] = d->recent_cr3_1[i] = 0;
 			}
 			d->recent_cr3_1_size = d->recent_cr3_2_size = 0;
 			
@@ -996,7 +993,9 @@ unsigned long do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf
 			d->recent_cr3_1 = NULL;
 			d->recent_cr3_2 = NULL;
 			d->recent_cr3 = NULL;
+			d->max_size = 0;
             spin_unlock(&(d->recent_cr3_lock));
+			printk("Clean sample\n");
 			break;
 		case 3:
             /*return cr3 back to Dom0*/
@@ -1006,6 +1005,11 @@ unsigned long do_vt_op(unsigned long op, int domID, unsigned long arg, void *buf
 				longBuff[0] = 0;
 				spin_lock(&(d->recent_cr3_lock));
 				buf_size = *(d->recent_cr3_size);
+				if(buf_size == 0){
+					longBuff[0] = 0;
+					spin_unlock(&(d->recent_cr3_lock));			
+					break;
+				}
 				*(d->recent_cr3_size) = 0;
 				ret_buf = d->recent_cr3;
 				if(d->recent_cr3 == d->recent_cr3_1){

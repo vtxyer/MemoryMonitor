@@ -14,6 +14,16 @@ int init_hypercall(int recent_cr3_size, int fd){
 
 	return ret;
 }
+int free_hypercall(int fd){
+	int ret, i;
+	//Free
+	privcmd_hypercall_t hyper1 = { 
+		__HYPERVISOR_vt_op, 
+		{ 2, domID, 0, 0, 0}
+	};
+	ret = ioctl(fd, IOCTL_PRIVCMD_HYPERCALL, &hyper1);
+	return ret;
+}
 int lock_pages_hypercall(int parts_num, int fd){
 	int ret, i;
 	privcmd_hypercall_t hyper1 = { 
